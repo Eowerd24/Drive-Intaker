@@ -117,6 +117,8 @@
                             <span class="badge badge-success">Ready for Intake</span>
                         {% elif d.status_badge == 'Protected' %}
                             <span class="badge badge-danger">Protected System Disk</span>
+                        {% elif d.status_badge == 'Locked' %}
+                            <span class="badge badge-danger">&#128274; Locked by User</span>
                         {% elif d.status_badge == 'Mounted' %}
                             <span class="badge badge-warning">Mounted Filesystem</span>
                         {% elif d.status_badge == 'LVM' %}

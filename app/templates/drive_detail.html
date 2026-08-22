@@ -13,14 +13,27 @@
         <p class="subtitle">{{ drive.model }} &bull; Serial: <code>{{ drive.serial }}</code></p>
     </div>
     <div class="header-actions">
-        {% if drive.is_eligible %}
+        {% if not drive.is_system_disk and not drive.is_locked %}
+            <button type="button" class="btn btn-outline-danger" onclick="lockDrive('{{ drive.name }}')" title="Permanently lock this disk to disable any data destruction operations">
+                &#128274; Lock Disk (Protect)
+            </button>
+        {% elif drive.is_locked %}
+            <span class="badge badge-danger badge-lg">&#128274; LOCKED</span>
+        {% endif %}
+
+        {% if not drive.is_system_disk %}
             <button type="button" class="btn btn-secondary" onclick="startSmartShortTest('{{ drive.path }}')">
                 &#9889; Run Short SMART (~5m)
             </button>
             <button type="button" class="btn btn-warning" onclick="startSmartLongTest('{{ drive.path }}')">
                 &#9889; Run Long SMART (~60m)
             </button>
+        {% endif %}
+
+        {% if drive.is_eligible %}
             <a href="/intake?disk={{ drive.path }}" class="btn btn-primary">+ Launch Regular Intake</a>
+        {% elif drive.is_locked %}
+            <button class="btn btn-disabled" disabled title="Drive is permanently locked against data destruction.">Destructive Intake Locked</button>
         {% else %}
             <button class="btn btn-disabled" disabled title="{{ drive.blockers | join(', ') }}">Operations Blocked (Ineligible)</button>
         {% endif %}
@@ -28,19 +41,33 @@
 </div>
 
 <!-- Safety Preflight Status -->
-<div class="card {% if drive.is_eligible %}card-border-success{% else %}card-border-warning{% endif %} mb-4">
+<div class="card {% if drive.is_eligible %}card-border-success{% elif drive.is_locked %}card-border-danger{% else %}card-border-warning{% endif %} mb-4">
     <div class="card-header">
-        <h3>Safety & Eligibility Status: 
-            {% if drive.is_eligible %}
-                <span class="badge badge-success">READY FOR INTAKE</span>
-            {% elif drive.is_system_disk %}
+        <h3>Safety &amp; Eligibility Status: 
+            {% if drive.is_system_disk %}
                 <span class="badge badge-danger">LOCKED - PROTECTED SYSTEM DISK</span>
+            {% elif drive.is_locked %}
+                <span class="badge badge-danger">&#128274; PERMANENTLY LOCKED BY USER</span>
+            {% elif drive.is_eligible %}
+                <span class="badge badge-success">READY FOR INTAKE</span>
             {% else %}
                 <span class="badge badge-warning">BLOCKED - IN USE / MOUNTED</span>
             {% endif %}
         </h3>
     </div>
     <div class="checklist-grid">
+        <div class="check-item {% if not drive.is_locked %}check-pass{% else %}check-fail{% endif %}">
+            <span class="check-icon">{% if not drive.is_locked %}&#10004;{% else %}&#10008;{% endif %}</span>
+            <div>
+                <strong>Persistent User Lock:</strong>
+                {% if drive.is_locked %}
+                    <span class="text-danger">Permanently locked! Data destruction is permanently disabled.</span>
+                {% else %}
+                    <span class="text-success">Not locked by user</span>
+                {% endif %}
+            </div>
+        </div>
+
         <div class="check-item {% if not safety.is_system_disk %}check-pass{% else %}check-fail{% endif %}">
             <span class="check-icon">{% if not safety.is_system_disk %}&#10004;{% else %}&#10008;{% endif %}</span>
             <div>

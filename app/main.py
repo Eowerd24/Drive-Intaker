@@ -220,6 +220,24 @@ async def api_get_drive(drive_name: str):
     return drive.to_dict()
 
 
+@app.post("/api/drives/{drive_name}/lock")
+async def api_lock_drive(drive_name: str):
+    drive = disk_detector.get_drive(drive_name)
+    if not drive:
+        raise HTTPException(status_code=404, detail=f"Drive '{drive_name}' not found.")
+    
+    locked = safety_validator.lock_disk(drive.canonical_path, note="Permanently locked via Web GUI")
+    if not locked:
+        raise HTTPException(status_code=500, detail="Failed to persist disk lock.")
+    
+    updated_drive = disk_detector.get_drive(drive_name)
+    return {
+        "success": True,
+        "message": f"Drive '{drive.canonical_path}' is now permanently locked against data destruction.",
+        "drive": updated_drive.to_dict() if updated_drive else None,
+    }
+
+
 @app.post("/api/jobs")
 async def api_start_job(req: JobStartRequest):
     if intake_job_manager.is_running:
@@ -233,7 +251,7 @@ async def api_start_job(req: JobStartRequest):
         raise HTTPException(status_code=404, detail=f"Target disk '{req.target_disk}' not found on host.")
 
     # Strict Safety Validation Check
-    is_destructive = req.workflow_mode != "inventory"
+    is_destructive = req.workflow_mode not in ("inventory", "smart_long", "smart_short")
     safety_check = safety_validator.validate_candidate(
         target_disk=drive.canonical_path,
         is_destructive=is_destructive,

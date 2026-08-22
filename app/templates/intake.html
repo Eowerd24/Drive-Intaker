@@ -45,10 +45,11 @@
                                 data-fw="{{ d.firmware }}"
                                 data-eligible="{{ 'true' if d.is_eligible else 'false' }}"
                                 data-system="{{ 'true' if d.is_system_disk else 'false' }}"
+                                data-locked="{{ 'true' if d.is_locked else 'false' }}"
                                 {% if selected_drive and selected_drive.path == d.path %}selected{% endif %}
                                 {% if not d.is_eligible %}disabled{% endif %}>
                             {{ d.path }} - {{ d.model }} ({{ d.size_str }}) [{{ d.serial }}] 
-                            {% if d.is_system_disk %} [SYSTEM - LOCKED]{% elif not d.is_eligible %} [INELIGIBLE]{% endif %}
+                            {% if d.is_system_disk %} [SYSTEM - PROTECTED]{% elif d.is_locked %} [&#128274; LOCKED BY USER]{% elif not d.is_eligible %} [INELIGIBLE]{% endif %}
                         </option>
                     {% endfor %}
                 </select>

@@ -22,6 +22,7 @@ class SafetyCheckResult:
     reasons: List[str] = field(default_factory=list)
     protected_system_disks: List[str] = field(default_factory=list)
     is_system_disk: bool = False
+    is_locked: bool = False
     is_mounted: bool = False
     is_swap: bool = False
     is_lvm: bool = False
@@ -40,6 +41,65 @@ class SafetyCheckResult:
 class SafetyValidator:
     def __init__(self, cmd_runner: Optional[Callable[..., any]] = None):
         self.run_cmd = cmd_runner or run_command_sync
+
+    @property
+    def locked_disks_file(self) -> Path:
+        """Persistent locked disks storage file inside container reports directory."""
+        return settings.reports_dir / "locked_disks.json"
+
+    def load_locked_disks(self) -> Set[str]:
+        """Loads persistently locked disks from container storage."""
+        if not self.locked_disks_file.exists():
+            return set()
+        try:
+            import json
+            data = json.loads(self.locked_disks_file.read_text())
+            if isinstance(data, list):
+                return {self.canonicalize_path(d) for d in data if d}
+            elif isinstance(data, dict):
+                return {self.canonicalize_path(d) for d in data.keys() if d}
+            return set()
+        except Exception as e:
+            logger.error(f"Failed to read locked_disks.json: {e}")
+            return set()
+
+    def lock_disk(self, disk_path: str, note: str = "") -> bool:
+        """Permanently locks a disk against all data destruction operations."""
+        canonical = self.canonicalize_path(disk_path)
+        if not canonical:
+            return False
+        try:
+            import json
+            current_locks = {}
+            if self.locked_disks_file.exists():
+                try:
+                    loaded = json.loads(self.locked_disks_file.read_text())
+                    if isinstance(loaded, dict):
+                        current_locks = loaded
+                    elif isinstance(loaded, list):
+                        current_locks = {d: "Locked" for d in loaded}
+                except Exception:
+                    pass
+            
+            from datetime import datetime
+            current_locks[canonical] = {
+                "locked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "note": note or "Locked by administrator via GUI"
+            }
+            self.locked_disks_file.parent.mkdir(parents=True, exist_ok=True)
+            self.locked_disks_file.write_text(json.dumps(current_locks, indent=2))
+            logger.info(f"Permanently locked disk against data destruction: {canonical}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to persist lock for disk {canonical}: {e}")
+            return False
+
+    def is_disk_locked(self, disk_path: str) -> bool:
+        """Checks if a disk has been permanently locked."""
+        canonical = self.canonicalize_path(disk_path)
+        if not canonical:
+            return False
+        return canonical in self.load_locked_disks()
 
     def canonicalize_path(self, path: str) -> str:
         """Resolves symlinks to absolute canonical path."""
@@ -286,36 +346,41 @@ class SafetyValidator:
         if is_sys:
             reasons.append(f"Target '{target_disk}' is the protected Proxmox system/boot disk. Operation permanently forbidden.")
 
-        # 6. Mounted Filesystems Check
+        # 6. Persistent User Lock Check
+        is_locked = self.is_disk_locked(canonical_target)
+        if is_locked and is_destructive:
+            reasons.append(f"Target '{target_disk}' is permanently LOCKED against data destruction. Wiping and write tests are permanently forbidden.")
+
+        # 7. Mounted Filesystems Check
         mounts = self.check_mounts(canonical_target)
         is_mounted = len(mounts) > 0
         if is_mounted:
             reasons.append(f"Disk or child partition is currently mounted: {', '.join(mounts)}")
 
-        # 7. Active Swap Check
+        # 8. Active Swap Check
         swap_devs = self.check_swap(canonical_target)
         is_swap = len(swap_devs) > 0
         if is_swap:
             reasons.append(f"Disk or child partition has active swap space: {', '.join(swap_devs)}")
 
-        # 8. Active LVM PV Check
+        # 9. Active LVM PV Check
         lvm_pvs = self.check_lvm(canonical_target)
         is_lvm = len(lvm_pvs) > 0
         if is_lvm:
             reasons.append(f"Disk or child partition is an active LVM Physical Volume: {', '.join(lvm_pvs)}")
 
-        # 9. Active ZFS Pool Reference Check
+        # 10. Active ZFS Pool Reference Check
         zfs_refs = self.check_zfs(canonical_target)
         is_zfs = len(zfs_refs) > 0
         if is_zfs:
             reasons.append("Disk or partition is currently referenced by a ZFS pool.")
 
-        # 10. Device Holders / RAID Check
+        # 11. Device Holders / RAID Check
         holders = self.check_holders(canonical_target)
         if holders:
             reasons.append(f"Disk has active device holders (device-mapper/RAID): {', '.join(holders)}")
 
-        # 11. Destructive Confirmation & Serial Match Check
+        # 12. Destructive Confirmation & Serial Match Check
         serial_matched = None
         if is_destructive:
             if not expected_serial:
@@ -338,6 +403,7 @@ class SafetyValidator:
             reasons=reasons,
             protected_system_disks=protected_list,
             is_system_disk=is_sys,
+            is_locked=is_locked,
             is_mounted=is_mounted,
             is_swap=is_swap,
             is_lvm=is_lvm,

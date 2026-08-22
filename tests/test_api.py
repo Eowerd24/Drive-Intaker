@@ -34,6 +34,7 @@ async def test_api_list_drives(monkeypatch):
             temperature_celsius=27,
             wear_remaining_percentage=98,
             is_system_disk=False,
+            is_locked=False,
             is_eligible=True,
             status_badge="Ready",
         )
@@ -69,6 +70,7 @@ async def test_api_reject_destructive_without_serial(monkeypatch):
             temperature_celsius=27,
             wear_remaining_percentage=98,
             is_system_disk=False,
+            is_locked=False,
             is_eligible=True,
             status_badge="Ready",
         )
@@ -172,5 +174,46 @@ async def test_api_delete_and_purge_reports(tmp_path, monkeypatch):
         assert res_purge.status_code == 200
         assert res_purge.json()["deleted_count"] >= 1
         assert not (tmp_path / run_id2).exists()
+
+
+@pytest.mark.asyncio
+async def test_api_lock_drive(tmp_path, monkeypatch):
+    """Test POST /api/drives/{drive_name}/lock permanently locks the drive."""
+    from app.core.safety import SafetyValidator, safety_validator
+    from app.core.disk_detector import DriveInfo, disk_detector
+
+    lock_file = tmp_path / "locked_disks.json"
+    monkeypatch.setattr(SafetyValidator, "locked_disks_file", property(lambda self: lock_file))
+
+    dummy_drive = DriveInfo(
+        name="sdb",
+        path="/dev/sdb",
+        canonical_path="/dev/sdb",
+        model="Test Model",
+        serial="SER123",
+        size_str="500G",
+        size_bytes=500000000000,
+        transport="sata",
+        vendor="TestVendor",
+        firmware="1.0",
+        is_ssd=True,
+        smart_health="PASSED",
+        power_on_hours=100,
+        temperature_celsius=30,
+        wear_remaining_percentage=99,
+        is_system_disk=False,
+        is_locked=False,
+        is_eligible=True,
+        status_badge="Ready",
+    )
+    monkeypatch.setattr(disk_detector, "get_drive", lambda name: dummy_drive)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        res = await ac.post("/api/drives/sdb/lock")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert "permanently locked" in data["message"]
+        assert safety_validator.is_disk_locked("/dev/sdb") is True
 
 

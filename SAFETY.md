@@ -31,7 +31,13 @@ The **Proxmox SSD Intake Station** is designed to perform low-level hardware ins
    - Client-side buttons remain disabled until the serial matches.
    - Server-side validates the serial string against the actual drive hardware before any destructive action is executed.
 
-6. **Single-Job Concurrency Guard**:
+6. **Persistent User Disk Locking (Permanent Protection)**:
+   - Administrators can permanently **Lock** any drive via the GUI (`🔒 Lock Disk`).
+   - The lock state is saved persistently inside container storage (`locked_disks.json`).
+   - Once locked, any operation touching data destruction (Wipe, Write Verification, Benchmarks) is permanently blocked by the safety validator and API.
+   - Only non-destructive inspections and SMART tests are permitted.
+
+7. **Single-Job Concurrency Guard**:
    - Only one intake job can execute at any given time.
    - Concurrent job attempts are rejected with HTTP 409 Conflict.
 

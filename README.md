@@ -68,10 +68,10 @@ All data and logs live **strictly inside the container**. Nothing touches or rem
 podman build -t ssd-intake:latest .
 ```
 
-#### 2. Run the Container
+#### 2. Run the Container (Rootful Privileged Execution)
 
 ```bash
-podman run -d --name ssd-intake \
+sudo podman run -d --name ssd-intake \
     --privileged \
     -p 127.0.0.1:7492:7492 \
     -v ssd-intake-data:/app/reports:Z \
@@ -85,7 +85,11 @@ podman run -d --name ssd-intake \
     localhost/ssd-intake:latest
 ```
 
-> **Data Storage Isolation**: All reports, logs, and diagnostic files are stored within the container volume `ssd-intake-data` (or internal container filesystem). No residual files are written to the physical host. When you remove the container/volume or click **Delete All Logs & Reports** in the GUI, the host remains completely clean.
+> **Root Privileges for Storage Hardware**: Block device ioctls (`smartctl`, `hdparm`, `fio`) require `CAP_SYS_RAWIO`. Running rootful Podman (`sudo podman` or systemd Quadlet in `/etc/containers/systemd/`) ensures direct raw access to all disk controllers.
+>
+> **Persistent Disk Locking**: Administrators can permanently lock sensitive or secondary drives from the GUI (`🔒 Lock Disk`). The lock persists in container storage (`locked_disks.json`) and permanently disables all wiping, benchmarking, and destructive workflows on that device.
+>
+> **Data Storage Isolation**: All reports, logs, locked drive registries, and diagnostic files are stored within the container volume `ssd-intake-data` (or internal container filesystem). No residual files are written to the physical host. When you remove the container/volume or click **Delete All Logs & Reports** in the GUI, the host remains completely clean.
 
 #### 3. Access the Web GUI
 

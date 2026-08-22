@@ -300,3 +300,33 @@ function copyTerminalLogs() {
         alert("Could not copy logs: " + err);
     });
 }
+
+async function lockDrive(driveName) {
+    const confirmation = prompt(
+        `🔒 PERMANENT DISK LOCK CONFIRMATION\n\n` +
+        `Locking this disk will permanently disable all data destruction operations (Secure Wipe, Full Write & Verify, and Benchmarks).\n\n` +
+        `Type "LOCK" to permanently protect this disk:`
+    );
+
+    if (confirmation !== "LOCK") {
+        if (confirmation !== null) {
+            alert("Lock cancelled: Confirmation did not match 'LOCK'.");
+        }
+        return;
+    }
+
+    try {
+        const resp = await fetch(`/api/drives/${driveName}/lock`, {
+            method: 'POST'
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            alert(`🔒 Disk ${driveName} is now PERMANENTLY LOCKED against data destruction.`);
+            window.location.reload();
+        } else {
+            alert("Could not lock disk: " + (data.detail || JSON.stringify(data)));
+        }
+    } catch (e) {
+        alert("Error locking disk: " + e.message);
+    }
+}

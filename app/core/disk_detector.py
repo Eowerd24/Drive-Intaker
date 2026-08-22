@@ -41,8 +41,9 @@ class DriveInfo:
     temperature_celsius: Optional[int]
     wear_remaining_percentage: Optional[int]
     is_system_disk: bool
+    is_locked: bool
     is_eligible: bool
-    status_badge: str  # Ready, Protected, Mounted, LVM, ZFS, Swap, In Use, Unsupported
+    status_badge: str  # Ready, Protected, Locked, Mounted, LVM, ZFS, Swap, In Use, Unsupported
     blockers: List[str] = field(default_factory=list)
     partitions: List[PartitionInfo] = field(default_factory=list)
     smart_report: Optional[SmartReport] = None
@@ -65,6 +66,7 @@ class DriveInfo:
             "temperature_celsius": self.temperature_celsius,
             "wear_remaining_percentage": self.wear_remaining_percentage,
             "is_system_disk": self.is_system_disk,
+            "is_locked": self.is_locked,
             "is_eligible": self.is_eligible,
             "status_badge": self.status_badge,
             "blockers": self.blockers,
@@ -201,11 +203,14 @@ class DiskDetector:
             )
 
             is_system_disk = safety_res.is_system_disk or (canonical_path in protected_disks)
+            is_locked = safety_res.is_locked or self.validator.is_disk_locked(canonical_path)
             blockers = list(safety_res.reasons)
 
             # Determine badge status
             if is_system_disk:
                 status_badge = "Protected"
+            elif is_locked:
+                status_badge = "Locked"
             elif safety_res.is_mounted:
                 status_badge = "Mounted"
             elif safety_res.is_swap:
@@ -239,7 +244,8 @@ class DiskDetector:
                     temperature_celsius=smart_report.temperature_celsius if smart_report else None,
                     wear_remaining_percentage=smart_report.wear_remaining_percentage if smart_report else None,
                     is_system_disk=is_system_disk,
-                    is_eligible=safety_res.is_safe and not is_system_disk,
+                    is_locked=is_locked,
+                    is_eligible=safety_res.is_safe and not is_system_disk and not is_locked,
                     status_badge=status_badge,
                     blockers=blockers,
                     partitions=partitions,

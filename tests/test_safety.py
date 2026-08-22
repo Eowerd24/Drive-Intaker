@@ -291,3 +291,56 @@ def test_smart_short_mode_bypasses_serial_check(monkeypatch):
     )
     assert res.is_safe is True
     assert res.serial_matched is None
+
+
+def test_lock_disk_persistence(tmp_path, monkeypatch):
+    """Test persistent disk locking saves and loads from JSON file."""
+    lock_file = tmp_path / "locked_disks.json"
+    validator = SafetyValidator()
+    monkeypatch.setattr(SafetyValidator, "locked_disks_file", property(lambda self: lock_file))
+
+    assert validator.is_disk_locked("/dev/sdc") is False
+    assert validator.lock_disk("/dev/sdc", note="Test lock") is True
+    assert validator.is_disk_locked("/dev/sdc") is True
+    assert lock_file.exists()
+
+    # Create new validator instance and verify it loads the persistent lock
+    validator2 = SafetyValidator()
+    monkeypatch.setattr(SafetyValidator, "locked_disks_file", property(lambda self: lock_file))
+    assert validator2.is_disk_locked("/dev/sdc") is True
+    assert validator2.is_disk_locked("/dev/sdb") is False
+
+
+def test_locked_disk_rejects_destructive_operations(tmp_path, monkeypatch):
+    """Test that a locked disk strictly rejects destructive wipes and write tests."""
+    lock_file = tmp_path / "locked_disks.json"
+    cmd_map = {
+        "lsblk -dnpo NAME,TYPE": (0, "/dev/sdb disk", ""),
+        "lsblk -dn -o TYPE /dev/sdb": (0, "disk", ""),
+    }
+    validator = SafetyValidator(cmd_runner=mock_runner_builder(cmd_map))
+    monkeypatch.setattr(SafetyValidator, "locked_disks_file", property(lambda self: lock_file))
+    monkeypatch.setattr(validator, "is_block_device", lambda p: True)
+
+    validator.lock_disk("/dev/sdb", "Administrator protected")
+
+    # Destructive check must fail
+    res_dest = validator.validate_candidate(
+        target_disk="/dev/sdb",
+        is_destructive=True,
+        expected_serial="TEST1234",
+        entered_serial="TEST1234",
+        custom_system_disks={"/dev/sda"},
+    )
+    assert res_dest.is_safe is False
+    assert res_dest.is_locked is True
+    assert any("LOCKED" in r for r in res_dest.reasons)
+
+    # Non-destructive check (inventory/SMART) must pass with is_locked=True
+    res_nondest = validator.validate_candidate(
+        target_disk="/dev/sdb",
+        is_destructive=False,
+        custom_system_disks={"/dev/sda"},
+    )
+    assert res_nondest.is_safe is True
+    assert res_nondest.is_locked is True
