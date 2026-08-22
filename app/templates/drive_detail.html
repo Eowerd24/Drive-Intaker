@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+
+{% block title %}Drive {{ drive.name }} - Details{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">&larr; Back to Dashboard</a>
+</div>
+
+<div class="dashboard-header">
+    <div class="header-titles">
+        <h1>Device Details: <code>{{ drive.path }}</code></h1>
+        <p class="subtitle">{{ drive.model }} &bull; Serial: <code>{{ drive.serial }}</code></p>
+    </div>
+    <div class="header-actions">
+        {% if drive.is_eligible %}
+            <button type="button" class="btn btn-warning" onclick="startSmartLongTest('{{ drive.path }}')">
+                &#9889; Run Long SMART Test (~60m)
+            </button>
+            <a href="/intake?disk={{ drive.path }}" class="btn btn-primary">+ Launch Regular Intake</a>
+        {% else %}
+            <button class="btn btn-disabled" disabled title="{{ drive.blockers | join(', ') }}">Operations Blocked (Ineligible)</button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Safety Preflight Status -->
+<div class="card {% if drive.is_eligible %}card-border-success{% else %}card-border-warning{% endif %} mb-4">
+    <div class="card-header">
+        <h3>Safety & Eligibility Status: 
+            {% if drive.is_eligible %}
+                <span class="badge badge-success">READY FOR INTAKE</span>
+            {% elif drive.is_system_disk %}
+                <span class="badge badge-danger">LOCKED - PROTECTED SYSTEM DISK</span>
+            {% else %}
+                <span class="badge badge-warning">BLOCKED - IN USE / MOUNTED</span>
+            {% endif %}
+        </h3>
+    </div>
+    <div class="checklist-grid">
+        <div class="check-item {% if not safety.is_system_disk %}check-pass{% else %}check-fail{% endif %}">
+            <span class="check-icon">{% if not safety.is_system_disk %}&#10004;{% else %}&#10008;{% endif %}</span>
+            <div>
+                <strong>System Disk Protection:</strong>
+                {% if safety.is_system_disk %}
+                    <span class="text-danger">Drive is host system/boot disk!</span>
+                {% else %}
+                    <span class="text-success">Not a protected system disk</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="check-item {% if not safety.is_mounted %}check-pass{% else %}check-fail{% endif %}">
+            <span class="check-icon">{% if not safety.is_mounted %}&#10004;{% else %}&#10008;{% endif %}</span>
+            <div>
+                <strong>Mount State:</strong>
+                {% if safety.is_mounted %}
+                    <span class="text-warning">Drive or child partition is mounted!</span>
+                {% else %}
+                    <span class="text-success">No active mountpoints</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="check-item {% if not safety.is_lvm %}check-pass{% else %}check-fail{% endif %}">
+            <span class="check-icon">{% if not safety.is_lvm %}&#10004;{% else %}&#10008;{% endif %}</span>
+            <div>
+                <strong>LVM Physical Volume:</strong>
+                {% if safety.is_lvm %}
+                    <span class="text-warning">Active LVM PV detected!</span>
+                {% else %}
+                    <span class="text-success">No active LVM PV</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="check-item {% if not safety.is_swap %}check-pass{% else %}check-fail{% endif %}">
+            <span class="check-icon">{% if not safety.is_swap %}&#10004;{% else %}&#10008;{% endif %}</span>
+            <div>
+                <strong>Swap Space:</strong>
+                {% if safety.is_swap %}
+                    <span class="text-warning">Active swap partition detected!</span>
+                {% else %}
+                    <span class="text-success">No swap configured</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="check-item {% if not safety.is_zfs %}check-pass{% else %}check-fail{% endif %}">
+            <span class="check-icon">{% if not safety.is_zfs %}&#10004;{% else %}&#10008;{% endif %}</span>
+            <div>
+                <strong>ZFS Pool Membership:</strong>
+                {% if safety.is_zfs %}
+                    <span class="text-warning">Referenced by active ZFS pool!</span>
+                {% else %}
+                    <span class="text-success">No ZFS pool reference</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="check-item {% if safety.is_whole_disk %}check-pass{% else %}check-fail{% endif %}">
+            <span class="check-icon">{% if safety.is_whole_disk %}&#10004;{% else %}&#10008;{% endif %}</span>
+            <div>
+                <strong>Whole Disk Target:</strong>
+                {% if safety.is_whole_disk %}
+                    <span class="text-success">Valid physical whole disk device</span>
+                {% else %}
+                    <span class="text-danger">Not a valid whole disk</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% if drive.blockers %}
+    <div class="alert alert-warning mt-3">
+        <strong>Blockers:</strong>
+        <ul>
+            {% for b in drive.blockers %}
+                <li>{{ b }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Hardware & Health Attributes -->
+<div class="stats-grid mb-4">
+    <div class="card stat-card">
+        <div class="stat-label">Model & Vendor</div>
+        <div class="stat-value text-sm">{{ drive.model }}</div>
+        <div class="stat-desc">Vendor: {{ drive.vendor or 'OEM' }} &bull; Tran: {{ drive.transport | upper }}</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Serial Number</div>
+        <div class="stat-value text-sm font-mono">{{ drive.serial }}</div>
+        <div class="stat-desc">Firmware: <code>{{ drive.firmware or 'Unknown' }}</code></div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Capacity</div>
+        <div class="stat-value">{{ drive.size_str }}</div>
+        <div class="stat-desc">{{ drive.size_bytes or 'N/A' }} bytes</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">SMART Overall Health</div>
+        <div class="stat-value">
+            {% if drive.smart_health == 'PASSED' %}
+                <span class="badge badge-success">PASSED</span>
+            {% elif drive.smart_health == 'FAILED' %}
+                <span class="badge badge-danger">FAILED</span>
+            {% else %}
+                <span class="badge badge-secondary">{{ drive.smart_health }}</span>
+            {% endif %}
+        </div>
+        <div class="stat-desc">Self-Assessment Test</div>
+    </div>
+</div>
+
+<div class="stats-grid mb-4">
+    <div class="card stat-card">
+        <div class="stat-label">Power-On Hours</div>
+        <div class="stat-value">{{ drive.power_on_hours or 'N/A' }}</div>
+        <div class="stat-desc">
+            {% if drive.power_on_hours %}
+                ~{{ (drive.power_on_hours / 24 / 365) | round(1) }} years powered on
+            {% else %}
+                Raw SMART attribute
+            {% endif %}
+        </div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Wear / Life Remaining</div>
+        <div class="stat-value">
+            {% if drive.wear_remaining_percentage is not none %}
+                {{ drive.wear_remaining_percentage }}%
+            {% else %}
+                N/A
+            {% endif %}
+        </div>
+        <div class="stat-desc">Endurance life indicator</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Temperature</div>
+        <div class="stat-value">
+            {% if drive.temperature_celsius %}
+                {{ drive.temperature_celsius }} &deg;C
+            {% else %}
+                N/A
+            {% endif %}
+        </div>
+        <div class="stat-desc">Drive sensor reading</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Total LBAs Written (TBW)</div>
+        <div class="stat-value">
+            {% if drive.smart_report and drive.smart_report.tbw_terabytes %}
+                {{ drive.smart_report.tbw_terabytes }} TB
+            {% else %}
+                N/A
+            {% endif %}
+        </div>
+        <div class="stat-desc">Lifetime host writes</div>
+    </div>
+</div>
+
+<!-- Partitions Table if any -->
+{% if drive.partitions %}
+<div class="card section-card mb-4">
+    <div class="card-header">
+        <h3>Existing Partition Table</h3>
+    </div>
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Partition</th>
+                    <th>Size</th>
+                    <th>Filesystem</th>
+                    <th>Mountpoint</th>
+                    <th>Label</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in drive.partitions %}
+                <tr>
+                    <td><code>{{ p.path }}</code></td>
+                    <td>{{ p.size }}</td>
+                    <td>{{ p.fstype or 'None' }}</td>
+                    <td>{{ p.mountpoint or 'None' }}</td>
+                    <td>{{ p.label or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Collapsible Raw Diagnostics -->
+<div class="card section-card">
+    <div class="card-header">
+        <h3>Raw Diagnostic Outputs</h3>
+        <span class="header-note">Click sections to expand</span>
+    </div>
+    
+    <details class="collapsible-section">
+        <summary>smartctl -x (Full SMART Output)</summary>
+        <pre class="code-block">{{ raw_smart or 'No output from smartctl' }}</pre>
+    </details>
+
+    <details class="collapsible-section">
+        <summary>hdparm -I (Identify Drive)</summary>
+        <pre class="code-block">{{ raw_hdparm or 'No output from hdparm' }}</pre>
+    </details>
+
+    <details class="collapsible-section">
+        <summary>udevadm info (Device Properties)</summary>
+        <pre class="code-block">{{ raw_udev or 'No output from udevadm' }}</pre>
+    </details>
+
+    <details class="collapsible-section">
+        <summary>lsblk -O (Full Topology & Attributes)</summary>
+        <pre class="code-block">{{ raw_lsblk or 'No output from lsblk' }}</pre>
+    </details>
+</div>
+{% endblock %}

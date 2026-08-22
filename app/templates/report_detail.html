@@ -1,0 +1,392 @@
+{% extends "base.html" %}
+
+{% block title %}Report: {{ record.run_id }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/reports">&larr; Back to Reports Archive</a>
+</div>
+
+<div class="dashboard-header">
+    <div class="header-titles">
+        <h1>Intake Report: <code>{{ record.run_id }}</code></h1>
+        <p class="subtitle">{{ record.model }} &bull; Serial: <code>{{ record.serial }}</code> &bull; {{ record.capacity }}</p>
+    </div>
+    <div class="header-actions">
+        <span class="badge {% if record.status == 'COMPLETED' %}badge-success{% elif record.status == 'FAILED' %}badge-danger{% else %}badge-warning{% endif %} badge-lg">
+            {{ record.status }}
+        </span>
+        <button class="btn btn-danger btn-sm ml-2" onclick="deleteReport('{{ record.run_id }}', true)">
+            &#128465; Delete Report
+        </button>
+    </div>
+</div>
+
+<!-- Manual Classification Selector -->
+<div class="card card-border-primary mb-4">
+    <div class="card-header">
+        <h3>Manual Drive Classification</h3>
+        <span class="header-note">Review test diagnostics and assign grading classification</span>
+    </div>
+    <div class="classification-editor">
+        <div class="classification-options">
+            <button type="button" class="btn-class {% if record.classification == 'PASS-A' %}selected{% endif %}" onclick="selectClassification('PASS-A')">
+                <div class="class-title text-success">PASS-A</div>
+                <div class="class-desc">Clean tests, healthy SMART, low/moderate wear</div>
+            </button>
+            <button type="button" class="btn-class {% if record.classification == 'PASS-B' %}selected{% endif %}" onclick="selectClassification('PASS-B')">
+                <div class="class-title text-info">PASS-B</div>
+                <div class="class-desc">Usable, older/high-wear, minor caveats</div>
+            </button>
+            <button type="button" class="btn-class {% if record.classification == 'LAB' %}selected{% endif %}" onclick="selectClassification('LAB')">
+                <div class="class-title text-warning">LAB</div>
+                <div class="class-desc">Disposable / scratch workloads only</div>
+            </button>
+            <button type="button" class="btn-class {% if record.classification == 'REJECT' %}selected{% endif %}" onclick="selectClassification('REJECT')">
+                <div class="class-title text-danger">REJECT</div>
+                <div class="class-desc">Errors, failed self-test, increasing defect counts</div>
+            </button>
+        </div>
+        
+        <div class="form-group mt-3">
+            <label for="technician-notes"><strong>Technician Notes:</strong></label>
+            <textarea id="technician-notes" class="form-control" rows="2" placeholder="Optional notes regarding drive history, cosmetic state, or test caveats...">{{ record.technician_notes }}</textarea>
+        </div>
+
+        <div class="mt-3 flex-between">
+            <button id="btn-save-classification" class="btn btn-primary" onclick="saveClassification('{{ record.run_id }}')">
+                Save Classification &amp; Update REPORT.md
+            </button>
+            <span id="classification-save-status" class="text-success hidden">&#10004; Saved successfully!</span>
+        </div>
+    </div>
+</div>
+
+<!-- Key Hardware & SMART Metrics Cards -->
+{% set sm_after = record.smart_after or record.smart_before or {} %}
+<div class="stats-grid mb-4">
+    <div class="card stat-card">
+        <div class="stat-label">Overall SMART Health</div>
+        <div class="stat-value">
+            {% if sm_after.get('health_status_str') == 'PASSED' %}
+                <span class="badge badge-success">PASSED</span>
+            {% elif sm_after.get('health_status_str') == 'FAILED' %}
+                <span class="badge badge-danger">FAILED</span>
+            {% else %}
+                <span class="badge badge-outline">{{ sm_after.get('health_status_str', 'UNKNOWN') }}</span>
+            {% endif %}
+        </div>
+        <div class="stat-desc">Self-Assessment</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Power-On Hours</div>
+        <div class="stat-value">{{ sm_after.get('power_on_hours', 'N/A') }}</div>
+        <div class="stat-desc">Operating lifetime</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Wear Remaining</div>
+        <div class="stat-value">
+            {% if sm_after.get('wear_remaining_percentage') is not none %}
+                {{ sm_after.get('wear_remaining_percentage') }}%
+            {% else %}
+                N/A
+            {% endif %}
+        </div>
+        <div class="stat-desc">Endurance life</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Reallocated Sectors</div>
+        <div class="stat-value {% if sm_after.get('reallocated_sectors', 0) > 0 %}text-danger{% else %}text-success{% endif %}">
+            {{ sm_after.get('reallocated_sectors', 0) }}
+        </div>
+        <div class="stat-desc">Defective sector count</div>
+    </div>
+</div>
+
+<div class="stats-grid mb-4">
+    <div class="card stat-card">
+        <div class="stat-label">Uncorrectable Errors</div>
+        <div class="stat-value {% if sm_after.get('uncorrectable_errors', 0) > 0 %}text-danger{% else %}text-success{% endif %}">
+            {{ sm_after.get('uncorrectable_errors', 0) }}
+        </div>
+        <div class="stat-desc">Media error counter</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">UDMA CRC / Interface Errors</div>
+        <div class="stat-value {% if sm_after.get('crc_errors', 0) > 0 %}text-warning{% else %}text-success{% endif %}">
+            {{ sm_after.get('crc_errors', 0) }}
+        </div>
+        <div class="stat-desc">Cable/bus interface faults</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Temperature</div>
+        <div class="stat-value">{{ sm_after.get('temperature_celsius', 'N/A') }} &deg;C</div>
+        <div class="stat-desc">Final temperature reading</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-label">Total Data Written (TBW)</div>
+        <div class="stat-value">{{ sm_after.get('tbw_terabytes', 'N/A') }} TB</div>
+        <div class="stat-desc">Lifetime host writes</div>
+    </div>
+</div>
+
+<!-- Firmware Status Card -->
+<div class="card section-card mb-4">
+    <div class="card-header">
+        <h3>Firmware Status &amp; fwupd Review</h3>
+    </div>
+    <div class="firmware-review-box">
+        <div class="summary-row">
+            <span class="label">Firmware (Before &rarr; After):</span>
+            <span class="val font-mono"><code>{{ record.firmware_before }}</code> &rarr; <code>{{ record.firmware_after or record.firmware_before }}</code></span>
+        </div>
+        <div class="summary-row">
+            <span class="label">Updatable Device:</span>
+            <span class="val">
+                {% if record.firmware_updatable %}
+                    <span class="badge badge-info">Yes (Hardware Supports Firmware Updates)</span>
+                {% else %}
+                    <span class="badge badge-secondary">No / Unknown fwupd Plugin</span>
+                {% endif %}
+            </span>
+        </div>
+        <div class="summary-row">
+            <span class="label">Update Available:</span>
+            <span class="val">
+                {% if record.firmware_update_available %}
+                    <span class="badge badge-warning">UPDATE AVAILABLE</span>
+                {% else %}
+                    <span class="badge badge-success">No Updates Offered by Enabled Remotes</span>
+                {% endif %}
+            </span>
+        </div>
+        <div class="summary-row">
+            <span class="label">Firmware Status Summary:</span>
+            <span class="val"><strong>{{ record.firmware_status }}</strong></span>
+        </div>
+
+        {% if record.firmware_update_available %}
+        <div class="alert alert-warning mt-3">
+            <strong>&#9888; Firmware update available — manual review required</strong>
+            <p>Enterprise SSDs often use OEM-specific firmware (Dell, HPE, Lenovo). Automatic flashing is disabled. Review <code>firmware/updates.txt</code> before manually applying firmware updates.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- SMART Before vs After Diff Table -->
+{% if record.smart_diff %}
+<div class="card section-card mb-4">
+    <div class="card-header">
+        <h3>SMART Before vs After Comparison</h3>
+        <span class="header-note">Verification that stress testing did not degrade drive health</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>SMART Metric</th>
+                    <th>Before Test</th>
+                    <th>After Test</th>
+                    <th>State Change</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for k, v in record.smart_diff.items() %}
+                <tr>
+                    <td><strong>{{ k | replace('_', ' ') | title }}</strong></td>
+                    <td>{{ v.before }}</td>
+                    <td>{{ v.after }}</td>
+                    <td>
+                        {% if v.changed %}
+                            <span class="badge badge-warning">Changed (Delta: {{ v.delta or 'N/A' }})</span>
+                        {% else %}
+                            <span class="badge badge-success">Unchanged</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Benchmarks Summary Card -->
+{% if record.benchmarks or record.full_verify %}
+<div class="card section-card mb-4">
+    <div class="card-header">
+        <h3>Performance &amp; Stress Verification</h3>
+    </div>
+    
+    {% if record.full_verify %}
+    {% set v_write = record.full_verify.get('write', {}) %}
+    {% set v_read = record.full_verify.get('verify', {}) %}
+    <div class="mb-4">
+        <h4>Full-Device Write + CRC Verification Pass</h4>
+        <div class="stats-grid">
+            <div class="card stat-card">
+                <div class="stat-label">Full Write Throughput</div>
+                <div class="stat-value">{{ v_write.get('write_bw_mb_s', 0) }} MB/s</div>
+                <div class="stat-desc">Sequential 1MB block write</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">CRC Verify Read Speed</div>
+                <div class="stat-value">{{ v_read.get('read_bw_mb_s', 0) }} MB/s</div>
+                <div class="stat-desc">Full disk CRC32C verification</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-label">Verification Status</div>
+                <div class="stat-value">
+                    {% if v_read.get('passed') %}
+                        <span class="badge badge-success">PASSED (0 Errors)</span>
+                    {% else %}
+                        <span class="badge badge-danger">FAILED ({{ v_read.get('total_errors', 1) }} Errors)</span>
+                    {% endif %}
+                </div>
+                <div class="stat-desc">Data integrity validation</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if record.benchmarks %}
+    {% set sr = record.benchmarks.get('seq_read', {}) %}
+    {% set sw = record.benchmarks.get('seq_write', {}) %}
+    {% set rm = record.benchmarks.get('rand_mixed', {}) %}
+    <div>
+        <h4>Fio Performance Workloads</h4>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Workload</th>
+                        <th>Read Speed</th>
+                        <th>Read IOPS</th>
+                        <th>Write Speed</th>
+                        <th>Write IOPS</th>
+                        <th>Mean Latency</th>
+                        <th>P99 Latency</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if sr %}
+                    <tr>
+                        <td><strong>Sequential Read (1M)</strong></td>
+                        <td>{{ sr.get('read_bw_mb_s', 0) }} MB/s</td>
+                        <td>{{ sr.get('read_iops', 0) }}</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td>{{ sr.get('read_lat_mean_ms', 0) }} ms</td>
+                        <td>{{ sr.get('read_lat_p99_ms', 0) }} ms</td>
+                    </tr>
+                    {% endif %}
+                    {% if sw %}
+                    <tr>
+                        <td><strong>Sequential Write (1M)</strong></td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td>{{ sw.get('write_bw_mb_s', 0) }} MB/s</td>
+                        <td>{{ sw.get('write_iops', 0) }}</td>
+                        <td>{{ sw.get('write_lat_mean_ms', 0) }} ms</td>
+                        <td>{{ sw.get('write_lat_p99_ms', 0) }} ms</td>
+                    </tr>
+                    {% endif %}
+                    {% if rm %}
+                    <tr>
+                        <td><strong>4K Random Mixed (70/30)</strong></td>
+                        <td>{{ rm.get('read_bw_mb_s', 0) }} MB/s</td>
+                        <td>{{ rm.get('read_iops', 0) }}</td>
+                        <td>{{ rm.get('write_bw_mb_s', 0) }} MB/s</td>
+                        <td>{{ rm.get('write_iops', 0) }}</td>
+                        <td>Read {{ rm.get('read_lat_mean_ms', 0) }} / Write {{ rm.get('write_lat_mean_ms', 0) }} ms</td>
+                        <td>Read {{ rm.get('read_lat_p99_ms', 0) }} / Write {{ rm.get('write_lat_p99_ms', 0) }} ms</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Generated REPORT.md Text View -->
+<div class="card section-card mb-4">
+    <div class="card-header">
+        <h3>Canonical REPORT.md Document</h3>
+        <span class="header-note">Saved on host at <code>{{ settings.reports_dir }}/{{ record.run_id }}/REPORT.md</code></span>
+    </div>
+    <pre class="code-block markdown-view">{{ report_md }}</pre>
+</div>
+
+<!-- Raw Output Files Links -->
+<div class="card section-card">
+    <div class="card-header">
+        <h3>Raw Diagnostic Log Artifacts</h3>
+    </div>
+    <div class="artifacts-grid">
+        {% for cat, files in artifacts.items() %}
+        <div class="artifact-category">
+            <h4>{{ cat | upper }}</h4>
+            <ul class="artifact-list">
+                {% for f in files %}
+                <li>
+                    <a href="/api/reports/{{ record.run_id }}/raw/{{ cat }}/{{ f }}" target="_blank" class="artifact-link">
+                        &#128196; {{ f }}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentClassification = "{{ record.classification or '' }}";
+
+    function selectClassification(cls) {
+        currentClassification = cls;
+        document.querySelectorAll('.btn-class').forEach(b => b.classList.remove('selected'));
+        event.currentTarget.classList.add('selected');
+    }
+
+    async function saveClassification(runId) {
+        if (!currentClassification) {
+            alert("Please select a classification grading first.");
+            return;
+        }
+
+        const notes = document.getElementById('technician-notes').value;
+        const btn = document.getElementById('btn-save-classification');
+        const statusSpan = document.getElementById('classification-save-status');
+
+        btn.disabled = true;
+        btn.innerText = "Saving...";
+
+        try {
+            const resp = await fetch(`/api/reports/${runId}/classify`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ classification: currentClassification, notes: notes })
+            });
+
+            if (resp.ok) {
+                statusSpan.classList.remove('hidden');
+                setTimeout(() => statusSpan.classList.add('hidden'), 3000);
+            } else {
+                const err = await resp.json();
+                alert("Failed to save classification: " + (err.detail || "Unknown error"));
+            }
+        } catch (e) {
+            alert("Network error: " + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Save Classification & Update REPORT.md";
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,22 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Virtual Environment
+.venv/
+env/
+venv/
+ENV/
+
+# Runtime test reports and scratch directories
+reports/*
+!reports/.gitkeep
+scratch/
+*.log
+
+# Editor & OS files
+.DS_Store
+.vscode/
+.idea/

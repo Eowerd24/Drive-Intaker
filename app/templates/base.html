@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SSD Intake Station{% endblock %} - Proxmox Tool</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🖴</text></svg>">
+</head>
+<body>
+    <header class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <a href="/" class="brand-link">
+                    <span class="brand-icon">🖴</span>
+                    <span class="brand-title">Proxmox SSD Intake</span>
+                </a>
+                <span class="badge badge-version">v{{ settings.app_version }}</span>
+            </div>
+            <nav class="nav-links">
+                <a href="/" class="nav-item {% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
+                <a href="/intake" class="nav-item {% if request.url.path == '/intake' %}active{% endif %}">New Intake</a>
+                <a href="/jobs/current" class="nav-item {% if request.url.path == '/jobs/current' %}active{% endif %}">Live Console</a>
+                <a href="/reports" class="nav-item {% if request.url.path.startswith('/reports') %}active{% endif %}">Reports</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="main-container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <div class="footer-container">
+            <div><strong>Host Storage Safety Guard:</strong> Protected disks are locked against accidental selection.</div>
+            <div class="footer-links">
+                <span>Storage Path: <code>{{ settings.reports_dir }}</code></span>
+            </div>
+        </div>
+    </footer>
+
+    <script src="/static/js/app.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

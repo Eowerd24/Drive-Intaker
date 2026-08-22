@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Live Intake Console{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <div class="header-titles">
+        <h1>Live Intake Console</h1>
+        <p class="subtitle" id="job-subtitle">
+            Target: <strong id="val-target-disk">{{ active_job.target_disk if active_job else 'None' }}</strong> 
+            &bull; Model: <span id="val-model">{{ active_job.drive_model if active_job else '-' }}</span>
+            &bull; Serial: <code id="val-serial">{{ active_job.drive_serial if active_job else '-' }}</code>
+        </p>
+    </div>
+    <div class="header-actions">
+        <button id="btn-cancel-job" class="btn btn-danger" onclick="cancelActiveJob()" {% if not active_job or active_job.status != 'RUNNING' %}disabled{% endif %}>
+            &#9632; Cancel Running Job
+        </button>
+        <a id="btn-view-report" href="/reports/{{ active_job.job_id if active_job else '' }}" class="btn btn-primary {% if not active_job or active_job.status != 'COMPLETED' %}hidden{% endif %}">
+            &#128196; View Final Report &rarr;
+        </a>
+    </div>
+</div>
+
+<!-- Progress Bar -->
+<div class="card mb-4">
+    <div class="progress-header">
+        <div class="progress-status-badge">
+            Status: <span id="val-status-badge" class="badge badge-running">{{ active_job.status if active_job else 'IDLE' }}</span>
+        </div>
+        <div class="progress-percent" id="val-progress-text">{{ active_job.progress_percent if active_job else 0 }}%</div>
+    </div>
+    <div class="progress-bar-container">
+        <div id="progress-bar-fill" class="progress-bar-fill" style="width: {{ active_job.progress_percent if active_job else 0 }}%;"></div>
+    </div>
+
+    <!-- Stage Pipeline Tracker -->
+    <div class="stages-tracker mt-3" id="stages-pipeline">
+        <div class="stage-step" data-stage="INITIAL_INVENTORY">
+            <div class="stage-icon">&#9679;</div>
+            <div class="stage-title">Inventory</div>
+        </div>
+        <div class="stage-step" data-stage="SAFETY_CHECKS">
+            <div class="stage-icon">&#9679;</div>
+            <div class="stage-title">Safety Check</div>
+        </div>
+        <div class="stage-step" data-stage="BEFORE_SNAPSHOT">
+            <div class="stage-icon">&#9679;</div>
+            <div class="stage-title">Snapshot</div>
+        </div>
+        <div class="stage-step" data-stage="WIPE">
+            <div class="stage-icon">&#9679;</div>
+            <div class="stage-title">Wipe Signatures</div>
+        </div>
+        <div class="stage-step" data-stage="SMART_SHORT">
+            <div class="stage-icon">&#9679;</div>
+            <div class="stage-title">SMART Short</div>
+        </div>
+        <div class="stage-step" data-stage="SMART_LONG">
+            <div class="stage-icon">&#9679;</div>
+            <div class="stage-title">SMART Long</div>
+        </div>
+        <div class="stage-step" data-stage="FIRMWARE_CHECK">
+            <div class="stage-icon">&#9679;</div>
+            <div class="stage-title">Firmware Check</div>
+        </div>
+        <div class="stage-step" data-stage="FULL_VERIFY">
+            <div class="stage-icon">&#9679;</div>
+            <div class="stage-title">Full Write+Verify</div>
+        </div>
+        <div class="stage-step" data-stage="BENCHMARKS">
+            <div class="stage-icon">&#9679;</div>
+            <div class="stage-title">Benchmarks</div>
+        </div>
+        <div class="stage-step" data-stage="AFTER_SNAPSHOT">
+            <div class="stage-icon">&#9679;</div>
+            <div class="stage-title">Final SMART</div>
+        </div>
+        <div class="stage-step" data-stage="GENERATE_REPORT">
+            <div class="stage-icon">&#9679;</div>
+            <div class="stage-title">Report</div>
+        </div>
+    </div>
+</div>
+
+<!-- Live Terminal / Log Viewer -->
+<div class="card section-card">
+    <div class="terminal-header">
+        <div class="terminal-title">
+            <span class="terminal-dot dot-red"></span>
+            <span class="terminal-dot dot-yellow"></span>
+            <span class="terminal-dot dot-green"></span>
+            <span class="terminal-label">Live Command &amp; Hardware Log</span>
+        </div>
+        <div class="terminal-controls">
+            <label class="control-toggle">
+                <input type="checkbox" id="chk-autoscroll" checked>
+                <span>Auto-scroll</span>
+            </label>
+            <button class="btn btn-sm btn-secondary" onclick="copyTerminalLogs()">Copy Logs</button>
+        </div>
+    </div>
+    <div id="terminal-body" class="terminal-body">
+        {% for line in log_history %}
+            <div class="terminal-line">{{ line }}</div>
+        {% else %}
+            <div class="terminal-line text-secondary">[System] Waiting for intake job events or command output...</div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/sse.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const jobId = "{{ active_job.job_id if active_job else 'current' }}";
+        initSSE(jobId);
+    });
+</script>
+{% endblock %}

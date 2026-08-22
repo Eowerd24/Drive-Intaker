@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}Launch SSD Intake{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">&larr; Back to Dashboard</a>
+</div>
+
+<div class="dashboard-header">
+    <div class="header-titles">
+        <h1>Configure SSD Intake Run</h1>
+        <p class="subtitle">Select a candidate drive and workflow options</p>
+    </div>
+</div>
+
+{% if active_job and active_job.status == 'RUNNING' %}
+<div class="alert alert-danger mb-4">
+    <h3>&#9888; Intake Job Currently Active!</h3>
+    <p>Another intake job is already running on <strong>{{ active_job.target_disk }}</strong> (Run: <code>{{ active_job.job_id }}</code>).</p>
+    <p>To preserve system stability, only one destructive intake job may run at a time.</p>
+    <div class="mt-2">
+        <a href="/jobs/current" class="btn btn-sm btn-primary">Open Active Job Console &rarr;</a>
+    </div>
+</div>
+{% endif %}
+
+<div class="intake-layout">
+    <!-- Left Column: Configuration Form -->
+    <div class="intake-form-column">
+        <div class="card">
+            <div class="card-header">
+                <h2>1. Select Candidate Drive</h2>
+            </div>
+            
+            <div class="form-group">
+                <label for="select-drive"><strong>Target Physical Disk:</strong></label>
+                <select id="select-drive" class="form-control" onchange="onDriveSelected(this.value)">
+                    <option value="">-- Choose Candidate Disk --</option>
+                    {% for d in drives %}
+                        <option value="{{ d.path }}" 
+                                data-model="{{ d.model }}" 
+                                data-serial="{{ d.serial }}" 
+                                data-size="{{ d.size_str }}" 
+                                data-fw="{{ d.firmware }}"
+                                data-eligible="{{ 'true' if d.is_eligible else 'false' }}"
+                                data-system="{{ 'true' if d.is_system_disk else 'false' }}"
+                                {% if selected_drive and selected_drive.path == d.path %}selected{% endif %}
+                                {% if not d.is_eligible %}disabled{% endif %}>
+                            {{ d.path }} - {{ d.model }} ({{ d.size_str }}) [{{ d.serial }}] 
+                            {% if d.is_system_disk %} [SYSTEM - LOCKED]{% elif not d.is_eligible %} [INELIGIBLE]{% endif %}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group mt-4">
+                <label><strong>2. Choose Workflow Mode:</strong></label>
+                
+                <div class="radio-card-group">
+                    <label class="radio-card">
+                        <input type="radio" name="workflow_mode" value="full" checked onchange="onWorkflowModeChanged()">
+                        <div class="radio-card-body">
+                            <div class="radio-title text-danger">&#9762; Regular Intake Pipeline (Recommended)</div>
+                            <div class="radio-desc">Secure Wipe &bull; SMART Short Test (~5m) &bull; fwupd Check &bull; Full Write+CRC Verify &bull; Benchmarks</div>
+                        </div>
+                    </label>
+
+                    <label class="radio-card">
+                        <input type="radio" name="workflow_mode" value="smart_long" onchange="onWorkflowModeChanged()">
+                        <div class="radio-card-body">
+                            <div class="radio-title text-warning">&#9889; SMART Extended Self-Test Only (~60m)</div>
+                            <div class="radio-desc">Standalone, non-destructive drive internal surface &amp; sector test with before/after health logging.</div>
+                        </div>
+                    </label>
+
+                    <label class="radio-card">
+                        <input type="radio" name="workflow_mode" value="inventory" onchange="onWorkflowModeChanged()">
+                        <div class="radio-card-body">
+                            <div class="radio-title text-success">&#128737; Safe Inventory Only (Non-Destructive)</div>
+                            <div class="radio-desc">Collect hardware baseline, SMART status, and check firmware availability without wiping or testing.</div>
+                        </div>
+                    </label>
+
+                    <label class="radio-card">
+                        <input type="radio" name="workflow_mode" value="custom" onchange="onWorkflowModeChanged()">
+                        <div class="radio-card-body">
+                            <div class="radio-title text-muted">&#9881; Custom Workflow</div>
+                            <div class="radio-desc">Selectively toggle specific test stages and benchmarks.</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Custom Options Section -->
+            <div id="custom-options" class="card card-nested mt-3 hidden">
+                <h4>Custom Workflow Options</h4>
+                <div class="checkbox-group">
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="opt-skip-firmware">
+                        <span>Skip <code>fwupd</code> firmware availability check</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="opt-skip-long">
+                        <span>Skip SMART extended self-test (~60 mins)</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="opt-skip-full-verify">
+                        <span>Skip full-device destructive write + CRC verification</span>
+                    </label>
+                    <label class="checkbox-item">
+                        <input type="checkbox" id="opt-skip-bench">
+                        <span>Skip performance benchmarks (Seq Read/Write & 4K Mixed)</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Safety Verification & Execution Gating -->
+    <div class="intake-safety-column">
+        <!-- Target vs System Comparison -->
+        <div class="card card-border-warning">
+            <div class="card-header">
+                <h3>&#128737; Safety Comparison</h3>
+            </div>
+            
+            <div class="target-summary-box">
+                <div class="summary-row">
+                    <span class="label">Target Candidate:</span>
+                    <span class="val font-mono" id="disp-target-disk">{{ selected_drive.path if selected_drive else 'None selected' }}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="label">Candidate Model:</span>
+                    <span class="val" id="disp-target-model">{{ selected_drive.model if selected_drive else '-' }}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="label">Candidate Serial:</span>
+                    <span class="val font-mono text-highlight" id="disp-target-serial">{{ selected_drive.serial if selected_drive else '-' }}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="label">Capacity:</span>
+                    <span class="val" id="disp-target-size">{{ selected_drive.size_str if selected_drive else '-' }}</span>
+                </div>
+                <hr>
+                <div class="summary-row">
+                    <span class="label text-danger">Protected System Disk:</span>
+                    <span class="val font-mono text-danger">
+                        {% if protected_disks %}
+                            {{ protected_disks | join(', ') }}
+                        {% else %}
+                            Auto-protecting host
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Destructive Confirmation Box -->
+            <div id="destructive-confirmation-box" class="mt-4">
+                <div class="alert alert-danger">
+                    <strong>&#9888; PERMANENT DATA DESTRUCTION WARNING</strong>
+                    <p class="mt-1">All partition tables, filesystem signatures, and stored data on the candidate disk will be completely and permanently overwritten.</p>
+                </div>
+
+                <div class="form-group mt-3">
+                    <label for="input-confirm-serial">
+                        <strong>Type the exact serial number to confirm destructive execution:</strong>
+                    </label>
+                    <input type="text" 
+                           id="input-confirm-serial" 
+                           class="form-control font-mono" 
+                           placeholder="Type serial here..." 
+                           autocomplete="off"
+                           oninput="onSerialInputChanged()">
+                    <div id="serial-match-hint" class="input-hint text-secondary mt-1">Serial match required before start.</div>
+                </div>
+
+                <button id="btn-start-destructive" 
+                        class="btn btn-danger btn-block btn-lg mt-3" 
+                        disabled 
+                        onclick="submitIntakeJob()">
+                    &#9762; CONFIRM &amp; START DESTRUCTIVE INTAKE
+                </button>
+            </div>
+
+            <!-- Non-Destructive Inventory Start Box -->
+            <div id="inventory-start-box" class="mt-4 hidden">
+                <div class="alert alert-success">
+                    <strong>&#10004; Safe Inventory Mode</strong>
+                    <p class="mt-1">No data will be destroyed or modified. Read-only diagnostic snapshots and firmware checks will be recorded.</p>
+                </div>
+                <button id="btn-start-inventory" 
+                        class="btn btn-success btn-block btn-lg mt-3" 
+                        onclick="submitIntakeJob()">
+                    &#128737; START INVENTORY ONLY
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Pass drive dataset for dynamic client-side confirmation
+    const candidateDrives = {
+        {% for d in drives %}
+            "{{ d.path }}": {
+                model: "{{ d.model }}",
+                serial: "{{ d.serial }}",
+                size: "{{ d.size_str }}",
+                firmware: "{{ d.firmware }}",
+                is_eligible: {{ 'true' if d.is_eligible else 'false' }},
+                is_system: {{ 'true' if d.is_system_disk else 'false' }}
+            },
+        {% endfor %}
+    };
+
+    let selectedDisk = "{{ selected_drive.path if selected_drive else '' }}";
+</script>
+{% endblock %}

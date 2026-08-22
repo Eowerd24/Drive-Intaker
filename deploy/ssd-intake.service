@@ -1,0 +1,27 @@
+[Unit]
+Description=Proxmox SSD Intake Station Web Application
+After=network.target
+
+[Service]
+Type=simple
+TimeoutStartSec=0
+ExecStartPre=-/usr/bin/podman stop ssd-intake
+ExecStartPre=-/usr/bin/podman rm ssd-intake
+ExecStart=/usr/bin/podman run --name ssd-intake \
+    --privileged \
+    -p 127.0.0.1:7492:7492 \
+    -v ssd-intake-data:/app/reports:Z \
+    -v /dev:/dev \
+    -v /sys:/sys:ro \
+    -v /run/udev:/run/udev:ro \
+    -v /proc:/proc:ro \
+    -e SSD_INTAKE_HOST=0.0.0.0 \
+    -e SSD_INTAKE_PORT=7492 \
+    -e SSD_INTAKE_ROOT_DIR=/app/reports \
+    localhost/ssd-intake:latest
+ExecStop=/usr/bin/podman stop -t 10 ssd-intake
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

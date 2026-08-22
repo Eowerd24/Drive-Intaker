@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Reports Archive{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <div class="header-titles">
+        <h1>Historical Intake Reports</h1>
+        <p class="subtitle">Persisted drive reports in <code>{{ settings.reports_dir }}</code></p>
+    </div>
+    <div class="header-actions">
+        <button class="btn btn-danger btn-sm" onclick="purgeAllReports()" {% if not runs %}disabled{% endif %}>
+            &#128465; Delete All Logs &amp; Reports
+        </button>
+    </div>
+</div>
+
+<div class="card section-card">
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Run ID / Folder</th>
+                    <th>Date</th>
+                    <th>Device</th>
+                    <th>Model</th>
+                    <th>Serial Number</th>
+                    <th>Capacity</th>
+                    <th>Status</th>
+                    <th>Classification</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in runs %}
+                <tr id="row-{{ r.run_id }}">
+                    <td><code>{{ r.run_id }}</code></td>
+                    <td>{{ r.created_at }}</td>
+                    <td><code>{{ r.target_device }}</code></td>
+                    <td>{{ r.model }}</td>
+                    <td><code>{{ r.serial }}</code></td>
+                    <td>{{ r.capacity }}</td>
+                    <td>
+                        {% if r.status == 'COMPLETED' %}
+                            <span class="badge badge-success">COMPLETED</span>
+                        {% elif r.status == 'FAILED' %}
+                            <span class="badge badge-danger">FAILED</span>
+                        {% elif r.status == 'CANCELLED' %}
+                            <span class="badge badge-warning">CANCELLED</span>
+                        {% else %}
+                            <span class="badge badge-secondary">{{ r.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if r.classification == 'PASS-A' %}
+                            <span class="badge badge-pass-a">PASS-A</span>
+                        {% elif r.classification == 'PASS-B' %}
+                            <span class="badge badge-pass-b">PASS-B</span>
+                        {% elif r.classification == 'LAB' %}
+                            <span class="badge badge-lab">LAB</span>
+                        {% elif r.classification == 'REJECT' %}
+                            <span class="badge badge-reject">REJECT</span>
+                        {% else %}
+                            <span class="badge badge-outline">Unclassified</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="btn-group">
+                            <a href="/reports/{{ r.run_id }}" class="btn btn-sm btn-secondary">View &rarr;</a>
+                            <button class="btn btn-sm btn-danger" onclick="deleteReport('{{ r.run_id }}')" title="Delete this report and its raw log artifacts">
+                                &#128465; Delete
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="9" class="text-center py-4">No reports recorded yet. Run an intake job to create reports.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
