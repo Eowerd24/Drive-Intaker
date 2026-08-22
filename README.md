@@ -3,11 +3,11 @@
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Podman](https://img.shields.io/badge/Podman-Quadlet%20Ready-892CA0?logo=podman&logoColor=white)](https://podman.io/)
-[![Proxmox VE](https://img.shields.io/badge/Proxmox%20VE-7.x%20%7C%208.x-E57000?logo=proxmox&logoColor=white)](https://www.proxmox.com/)
+[![Linux](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20RHEL%20%7C%20Proxmox-FCC624?logo=linux&logoColor=black)](https://kernel.org/)
 [![Tests](https://img.shields.io/badge/Tests-35%2F35%20Passing-brightgreen?logo=pytest&logoColor=white)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> **A self-contained Podman web application with a modern dark GUI for safely inspecting, wiping, testing, firmware checking, stress-verifying, benchmarking, and grading enterprise SATA, SAS, and NVMe SSDs one drive at a time on Proxmox VE.**
+> **A self-contained Podman web application with a modern dark GUI for safely inspecting, wiping, testing, firmware checking, stress-verifying, benchmarking, and grading enterprise SATA, SAS, and NVMe SSDs on any Linux machine (servers, hypervisors, homelabs, or dedicated test benches).**
 
 ---
 
@@ -15,13 +15,16 @@
 
 - [Overview](#-overview)
 - [Key Features](#-key-features)
+- [OS & Platform Compatibility](#-os--platform-compatibility)
+  - [Linux (Native)](#linux-native--primary-target)
+  - [Windows Support (via WSL2)](#windows-support-via-wsl2)
 - [Intake Workflow Pipeline](#-intake-workflow-pipeline)
 - [Safety Architecture & Protections](#-safety-architecture--protections)
 - [Zero-Host Data Footprint](#-zero-host-data-footprint)
 - [Quick Start](#-quick-start)
-  - [Method 1: Standalone Podman (Recommended)](#method-1-standalone-podman-recommended)
-  - [Method 2: Podman Quadlet (Systemd Managed)](#method-2-podman-quadlet-systemd-managed)
-  - [Accessing the GUI](#accessing-the-web-gui)
+  - [Method 1: Standalone Podman CLI (Recommended)](#method-1-standalone-podman-cli-recommended)
+  - [Method 2: Podman Quadlet / Systemd Service](#method-2-podman-quadlet--systemd-service)
+  - [Accessing the Web GUI](#accessing-the-web-gui)
 - [Grading & Qualification Schema](#-grading--qualification-schema)
 - [REST API Endpoints](#-rest-api-endpoints)
 - [Development & Automated Testing](#-development--automated-testing)
@@ -31,14 +34,14 @@
 
 ## 🔍 Overview
 
-Enterprise SSDs pulled from decommissioned servers, eBay lots, or lab clusters need rigorous qualification before being trusted in production ZFS pools or Ceph clusters. 
+Used enterprise SSDs pulled from decommissioned servers, lab clusters, or secondary markets need rigorous qualification before being trusted in production storage pools (ZFS, Ceph, mdraid, or hypervisor datastores).
 
-**Drive Intaker** packages the industry-standard qualification methodology into an easy-to-use, web-based intake console that runs directly on your Proxmox VE host inside an isolated Podman container.
+**Drive Intaker** automates this entire intake workflow into an easy-to-use web interface running inside an isolated Podman container.
 
 ```mermaid
 flowchart LR
-    A["🔌 Insert SSD"] --> B["🔎 Auto-Discovery & Health Snapshot"]
-    B --> C["🛡️ Pre-Flight Safety Checks"]
+    A["🔌 Attach SSD"] --> B["🔎 Auto-Discovery & Health Baseline"]
+    B --> C["🛡️ Pre-Flight Safety Engine"]
     C --> D["🧹 Secure Wipe / Sanitize"]
     D --> E["⚡ SMART Self-Tests"]
     E --> F["📦 fwupd Firmware Check"]
@@ -49,18 +52,48 @@ flowchart LR
 
 ---
 
+## 🖥️ OS & Platform Compatibility
+
+### Linux (Native / Primary Target)
+Drive Intaker runs natively on **any modern Linux distribution** with direct controller access:
+- **Supported Distributions**: Debian, Ubuntu, Proxmox VE (7.x / 8.x), TrueNAS SCALE, RHEL, Rocky Linux, Fedora, Arch Linux, Alpine.
+- **Hardware Interfaces**: Direct SATA (AHCI), SAS (HBA in IT-mode / MegaRAID JBOD), NVMe (PCIe/U.2/U.3/M.2), and direct USB storage docks.
+- **Full Capabilities**: Automatic boot disk protection across ext4, XFS, Btrfs, LVM volume groups, and ZFS root pools.
+
+### Windows Support (via WSL2)
+Can Drive Intaker run on **Windows**?
+
+| Platform | Supported? | Details |
+| :--- | :--- | :--- |
+| **Native Windows (Win32)** | ❌ No | Drive Intaker relies on the Linux storage subsystem (`/dev/sd*`, `/dev/nvme*`, `sysfs`, `udev`, `SG_IO` ioctls, `blkdiscard`, and Linux `fwupd`). Native Win32 does not provide these device nodes. |
+| **Windows via WSL2** | ⚠️ Yes (with bare disk attach) | You can run Drive Intaker in **Windows Subsystem for Linux 2 (WSL2)** by attaching physical disks directly to the WSL2 kernel. |
+
+#### Running on Windows with WSL2:
+1. Open PowerShell as Administrator and locate your physical disk number:
+   ```powershell
+   GET-CimInstance -ClassName Win32_DiskDrive | Select-Object DeviceID, Model, Size
+   ```
+2. Mount the raw disk directly to WSL2 without Windows formatting:
+   ```powershell
+   wsl --mount \\.\PhysicalDrive1 --bare
+   ```
+   *(For USB-attached SSD enclosures, you can also use `usbipd wsl attach --busid <BUSID>` via [usbipd-win](https://github.com/dorssel/usbipd-win)).*
+3. Inside your WSL2 terminal, launch Drive Intaker via Podman or Python.
+
+---
+
 ## ✨ Key Features
 
-- **🛡️ Uncompromising Safety Engine**: Automatic parent disk detection protects Proxmox boot/system drives (`/`, `/boot`, `/boot/efi`, LVM root volume groups, and ZFS root pools).
-- **🔒 Persistent User Disk Locking**: Permanently lock secondary, pool, or backup disks from the GUI to permanently forbid all destructive operations.
+- **🛡️ Uncompromising Safety Engine**: Automatic host boot disk detection protects system disks (`/`, `/boot`, `/boot/efi`, LVM root volume groups, and ZFS root pools).
+- **🔒 Persistent User Disk Locking**: Permanently lock secondary, pool, or backup disks from the GUI (`🔒 Lock Disk`) to permanently forbid all destructive operations.
 - **⚡ Modular Intake Modes**:
-  - **Regular Intake Pipeline**: Complete end-to-end qualification (Wipe &rarr; SMART Short &rarr; fwupd &rarr; 100% Write + CRC Verify &rarr; Benchmarks &rarr; Report).
+  - **Regular Intake Pipeline**: Complete qualification (Wipe &rarr; SMART Short &rarr; fwupd &rarr; 100% Write + CRC Verify &rarr; Benchmarks &rarr; Report).
   - **⚡ SMART Short Self-Test Only (~5m)**: Standalone, non-destructive quick health verification.
   - **⚡ SMART Extended Self-Test Only (~60m)**: Standalone, non-destructive deep surface & sector scan.
   - **🛡️ Safe Inventory Mode**: Non-destructive baseline snapshot and firmware availability query.
-  - **⚙️ Custom Workflows**: Toggle individual verification stages as needed.
+  - **⚙️ Custom Workflows**: Selectively toggle individual test stages.
 - **📡 Real-Time SSE Log Streaming**: Live terminal output streamed line-by-line via Server-Sent Events (SSE) with interactive stage progress indicators.
-- **📦 Zero-Host Footprint**: All reports, registries, and diagnostic logs live **strictly inside the container storage**. Zero residual files are written to the physical Proxmox host.
+- **📦 Zero-Host Footprint**: All reports, registries, and diagnostic logs live **strictly inside the container storage**. Zero residual files are written to the physical host.
 - **🏷️ Interactive Grading & Review**: Classify drives (`PASS-A`, `PASS-B`, `MONITOR`, `REJECT`, `WIPED-ONLY`) directly in the UI and add technician notes to persistent Markdown reports.
 - **🧹 Instant Log Purge**: Single-click purge option in the GUI and REST API to delete all historical logs and reports.
 - **🔌 Enterprise Controller Support**: Inspects raw ATA/SCSI/NVMe registers via `smartctl -x`, `hdparm -I`, `udevadm`, `lsscsi`, and `lsblk`.
@@ -80,7 +113,7 @@ When executing the **Regular Intake Pipeline**, Drive Intaker runs through 8 dis
 [7. BENCHMARKS]         ──► [8. AFTER_SNAPSHOT & REPORT GENERATION]
 ```
 
-1. **Initial Inventory**: Queries device topology, model, serial, capacity, transport (SATA/SAS/NVMe), and baseline controller properties.
+1. **Initial Inventory**: Discovers device topology, model, serial, capacity, transport (SATA/SAS/NVMe), and controller properties.
 2. **Safety Checks**: Validates whole-disk status, ensures the disk is not mounted, swap-active, LVM-active, ZFS-active, or user-locked, and confirms serial match.
 3. **Before Snapshot**: Records baseline SMART metrics (Power-On Hours, Wear Percentage, Reallocated Sectors, CRC Errors, Temperature, TBW).
 4. **Secure Wipe & SMART Short**: Erases drive partitions/signatures (`blkdiscard` / `hdparm --security-erase` / `nvme format`) and executes a ~5-minute internal drive self-test.
@@ -95,7 +128,7 @@ When executing the **Regular Intake Pipeline**, Drive Intaker runs through 8 dis
 
 | Protection | Implementation |
 | :--- | :--- |
-| **Proxmox Boot Disk Protection** | Auto-detects physical disks backing `/`, `/boot`, `/boot/efi`, LVM PVs, and ZFS root pools (`/dev/nvme0n1`). |
+| **Host System Disk Protection** | Auto-detects physical disks backing `/`, `/boot`, `/boot/efi`, LVM PVs, and ZFS root pools. |
 | **Permanent Disk Lock** | Administrators can lock any disk (`🔒 Lock Disk`). The lock persists in container storage and permanently forbids data destruction. |
 | **Whole Disks Only** | Partitions (`/dev/sda1`, `/dev/nvme0n1p1`) and virtual loop devices are strictly rejected. |
 | **In-Use Disk Prevention** | Refuses any disk with active mounts, active swap, LVM volume memberships, ZFS pool memberships, or RAID holders. |
@@ -112,21 +145,28 @@ All intake data, diagnostic outputs, and logs are stored **strictly within the c
 
 - No files or directories are created on the physical host machine.
 - Clicking **"Delete All Logs & Reports"** in the GUI completely clears stored run records.
-- Removing the container leaves your Proxmox VE host 100% clean.
+- Removing the container leaves your host system 100% clean.
 
 ---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-Install Podman on your Proxmox host:
+Install Podman on your Linux host:
 ```bash
-apt update && apt install -y podman
+# Debian / Ubuntu / Proxmox VE
+sudo apt update && sudo apt install -y podman
+
+# Fedora / RHEL / Rocky Linux
+sudo dnf install -y podman
+
+# Arch Linux
+sudo pacman -S podman
 ```
 
 ---
 
-### Method 1: Standalone Podman (Recommended)
+### Method 1: Standalone Podman CLI (Recommended)
 
 #### 1. Clone & Build
 ```bash
@@ -135,7 +175,7 @@ cd Drive-Intaker
 podman build -t ssd-intake:latest .
 ```
 
-#### 2. Launch Container
+#### 2. Launch Container (Rootful Privileged Execution)
 ```bash
 sudo podman run -d --name ssd-intake \
     --privileged \
@@ -153,30 +193,30 @@ sudo podman run -d --name ssd-intake \
 
 ---
 
-### Method 2: Podman Quadlet (Systemd Managed)
+### Method 2: Podman Quadlet / Systemd Service
 
-Deploy as a native systemd unit managed by Proxmox:
+Deploy as a native systemd unit managed by your OS:
 
 ```bash
 # 1. Copy Quadlet container definition
-cp deploy/ssd-intake.container /etc/containers/systemd/ssd-intake.container
+sudo cp deploy/ssd-intake.container /etc/containers/systemd/ssd-intake.container
 
 # 2. Reload systemd
-systemctl daemon-reload
+sudo systemctl daemon-reload
 
-# 3. Start the service
-systemctl start ssd-intake
-systemctl enable ssd-intake
+# 3. Start and enable the service
+sudo systemctl start ssd-intake
+sudo systemctl enable ssd-intake
 ```
 
 ---
 
 ### 🌐 Accessing the Web GUI
 
-For security, the application binds locally to port `7492`. Access the GUI from your workstation via SSH port forwarding:
+For security, the application binds to port `7492`. Access the GUI from your workstation directly or via SSH port forwarding:
 
 ```bash
-ssh -L 7492:127.0.0.1:7492 root@<proxmox-ip>
+ssh -L 7492:127.0.0.1:7492 root@<linux-host-ip>
 ```
 
 Open your browser and navigate to:
