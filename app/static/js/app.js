@@ -41,21 +41,51 @@ function onWorkflowModeChanged() {
         if (customOptions) customOptions.classList.add('hidden');
     }
 
-    const isNonDestructive = (selectedMode === 'inventory' || selectedMode === 'smart_long');
+    const isNonDestructive = (selectedMode === 'inventory' || selectedMode === 'smart_long' || selectedMode === 'smart_short');
     const startInvBtn = document.getElementById('btn-start-inventory');
 
     if (isNonDestructive) {
         if (destructiveBox) destructiveBox.classList.add('hidden');
         if (inventoryBox) inventoryBox.classList.remove('hidden');
         if (startInvBtn) {
-            startInvBtn.innerText = selectedMode === 'smart_long' 
-                ? "⚡ START EXTENDED SMART TEST (~60M)" 
-                : "START SAFE INVENTORY ONLY";
+            if (selectedMode === 'smart_short') {
+                startInvBtn.innerText = "⚡ START SHORT SMART TEST (~5M)";
+            } else if (selectedMode === 'smart_long') {
+                startInvBtn.innerText = "⚡ START EXTENDED SMART TEST (~60M)";
+            } else {
+                startInvBtn.innerText = "START SAFE INVENTORY ONLY";
+            }
         }
     } else {
         if (destructiveBox) destructiveBox.classList.remove('hidden');
         if (inventoryBox) inventoryBox.classList.add('hidden');
         onSerialInputChanged();
+    }
+}
+
+async function startSmartShortTest(diskPath) {
+    if (!confirm(`Launch SMART Short Self-Test (~5 min) on ${diskPath}?\n\nThis will trigger the drive's internal quick electrical/mechanical test and record full diagnostic results.`)) {
+        return;
+    }
+
+    try {
+        const resp = await fetch('/api/jobs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                target_disk: diskPath,
+                workflow_mode: 'smart_short'
+            })
+        });
+
+        const data = await resp.json();
+        if (resp.ok) {
+            window.location.href = '/jobs/current';
+        } else {
+            alert("Could not start SMART Short Test: " + (data.detail || JSON.stringify(data)));
+        }
+    } catch (e) {
+        alert("Error starting test: " + e.message);
     }
 }
 

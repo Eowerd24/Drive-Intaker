@@ -163,6 +163,8 @@ class IntakeJobManager:
             for s in JOB_STAGES:
                 if config.workflow_mode == "inventory" and s in ["WIPE", "SMART_SHORT", "SMART_LONG", "FULL_VERIFY", "BENCHMARKS"]:
                     init_stages[s] = "SKIPPED"
+                elif config.workflow_mode == "smart_short" and s in ["WIPE", "SMART_LONG", "FIRMWARE_CHECK", "FULL_VERIFY", "BENCHMARKS"]:
+                    init_stages[s] = "SKIPPED"
                 elif config.workflow_mode == "smart_long" and s in ["WIPE", "SMART_SHORT", "FIRMWARE_CHECK", "FULL_VERIFY", "BENCHMARKS"]:
                     init_stages[s] = "SKIPPED"
                 elif config.workflow_mode == "full" and s == "SMART_LONG":
@@ -208,7 +210,7 @@ class IntakeJobManager:
     async def _execute_workflow(self, config: JobConfig, drive_info: Any) -> None:
         """Main workflow state machine."""
         target_disk = drive_info.canonical_path
-        is_destructive = config.workflow_mode not in ("inventory", "smart_long")
+        is_destructive = config.workflow_mode not in ("inventory", "smart_long", "smart_short")
         record: Optional[IntakeRunRecord] = None
         run_dir: Optional[Path] = None
 
@@ -302,6 +304,34 @@ class IntakeJobManager:
                 self._broadcast_stage_change("GENERATE_REPORT", "PASSED", 100)
 
                 self._broadcast_log(f"[SUCCESS] Inventory collection complete: {run_dir / 'REPORT.md'}")
+                if self.current_status:
+                    self.current_status.status = "COMPLETED"
+                    self.current_status.end_time = record.completed_at
+                return
+
+            # Handle Standalone SMART Short Test Mode
+            if config.workflow_mode == "smart_short":
+                self._check_cancelled()
+                self._broadcast_stage_change("SMART_SHORT", "RUNNING", 30)
+                await self._run_smart_selftest(target_disk, "short", run_dir / "tests", smart_before.short_test_duration_minutes)
+                self._broadcast_stage_change("SMART_SHORT", "PASSED", 80)
+
+                self._check_cancelled()
+                self._broadcast_stage_change("AFTER_SNAPSHOT", "RUNNING", 85)
+                self._broadcast_log("[SNAPSHOT] Capturing final SMART status after short self-test...")
+                smart_after = await self._capture_snapshot(target_disk, run_dir / "after")
+                record.smart_after = smart_after.to_dict()
+                record.smart_diff = SmartParser.diff_smart(smart_before, smart_after)
+                self._broadcast_stage_change("AFTER_SNAPSHOT", "PASSED", 90)
+
+                record.status = "COMPLETED"
+                record.completed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self._broadcast_stage_change("GENERATE_REPORT", "RUNNING", 95)
+                self.reporter.generate_markdown_report(run_dir, record)
+                self.reporter.save_run_metadata(run_dir, record)
+                self._broadcast_stage_change("GENERATE_REPORT", "PASSED", 100)
+
+                self._broadcast_log(f"[SUCCESS] SMART Short Self-Test complete: {run_dir / 'REPORT.md'}")
                 if self.current_status:
                     self.current_status.status = "COMPLETED"
                     self.current_status.end_time = record.completed_at

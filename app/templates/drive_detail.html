@@ -14,8 +14,11 @@
     </div>
     <div class="header-actions">
         {% if drive.is_eligible %}
+            <button type="button" class="btn btn-secondary" onclick="startSmartShortTest('{{ drive.path }}')">
+                &#9889; Run Short SMART (~5m)
+            </button>
             <button type="button" class="btn btn-warning" onclick="startSmartLongTest('{{ drive.path }}')">
-                &#9889; Run Long SMART Test (~60m)
+                &#9889; Run Long SMART (~60m)
             </button>
             <a href="/intake?disk={{ drive.path }}" class="btn btn-primary">+ Launch Regular Intake</a>
         {% else %}
@@ -240,6 +243,13 @@
         <h3>Raw Diagnostic Outputs</h3>
         <span class="header-note">Click sections to expand</span>
     </div>
+    
+    {% if 'Permission denied' in raw_smart or 'Permission denied' in raw_hdparm %}
+    <div class="alert alert-warning mb-3">
+        <strong>&#9888; Note on Raw Device Access:</strong>
+        Direct ATA/SCSI commands (<code>smartctl</code>, <code>hdparm</code>) require root / <code>CAP_SYS_RAWIO</code> access to block devices. When deployed in the rootful Podman container (<code>--privileged</code>), full raw hardware registers and capabilities are accessible.
+    </div>
+    {% endif %}
     
     <details class="collapsible-section">
         <summary>smartctl -x (Full SMART Output)</summary>

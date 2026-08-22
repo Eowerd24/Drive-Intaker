@@ -273,3 +273,21 @@ def test_smart_long_mode_bypasses_serial_check(monkeypatch):
     )
     assert res.is_safe is True
     assert res.serial_matched is None
+
+
+def test_smart_short_mode_bypasses_serial_check(monkeypatch):
+    """Test non-destructive SMART short test does not require serial typing."""
+    cmd_map = {
+        "lsblk -dnpo NAME,TYPE": (0, "/dev/sdb disk", ""),
+        "lsblk -dn -o TYPE /dev/sdb": (0, "disk", ""),
+    }
+    validator = SafetyValidator(cmd_runner=mock_runner_builder(cmd_map))
+    monkeypatch.setattr(validator, "is_block_device", lambda p: True)
+
+    res = validator.validate_candidate(
+        target_disk="/dev/sdb",
+        is_destructive=False,
+        custom_system_disks={"/dev/sda"},
+    )
+    assert res.is_safe is True
+    assert res.serial_matched is None

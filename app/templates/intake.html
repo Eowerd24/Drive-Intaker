@@ -67,6 +67,14 @@
                     </label>
 
                     <label class="radio-card">
+                        <input type="radio" name="workflow_mode" value="smart_short" onchange="onWorkflowModeChanged()">
+                        <div class="radio-card-body">
+                            <div class="radio-title text-info">&#9889; SMART Short Self-Test Only (~5m)</div>
+                            <div class="radio-desc">Standalone, non-destructive drive internal electrical/mechanical routine with before/after health logging.</div>
+                        </div>
+                    </label>
+
+                    <label class="radio-card">
                         <input type="radio" name="workflow_mode" value="smart_long" onchange="onWorkflowModeChanged()">
                         <div class="radio-card-body">
                             <div class="radio-title text-warning">&#9889; SMART Extended Self-Test Only (~60m)</div>
