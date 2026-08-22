@@ -96,8 +96,8 @@
     </div>
     <div class="card stat-card">
         <div class="stat-label">Reallocated Sectors</div>
-        <div class="stat-value {% if sm_after.get('reallocated_sectors', 0) > 0 %}text-danger{% else %}text-success{% endif %}">
-            {{ sm_after.get('reallocated_sectors', 0) }}
+        <div class="stat-value {% if sm_after.get('reallocated_sectors') is not none and sm_after.get('reallocated_sectors') > 0 %}text-danger{% else %}text-success{% endif %}">
+            {{ sm_after.get('reallocated_sectors') if sm_after.get('reallocated_sectors') is not none else 'N/A' }}
         </div>
         <div class="stat-desc">Defective sector count</div>
     </div>
@@ -106,15 +106,15 @@
 <div class="stats-grid mb-4">
     <div class="card stat-card">
         <div class="stat-label">Uncorrectable Errors</div>
-        <div class="stat-value {% if sm_after.get('uncorrectable_errors', 0) > 0 %}text-danger{% else %}text-success{% endif %}">
-            {{ sm_after.get('uncorrectable_errors', 0) }}
+        <div class="stat-value {% if sm_after.get('uncorrectable_errors') is not none and sm_after.get('uncorrectable_errors') > 0 %}text-danger{% else %}text-success{% endif %}">
+            {{ sm_after.get('uncorrectable_errors') if sm_after.get('uncorrectable_errors') is not none else 'N/A' }}
         </div>
         <div class="stat-desc">Media error counter</div>
     </div>
     <div class="card stat-card">
         <div class="stat-label">UDMA CRC / Interface Errors</div>
-        <div class="stat-value {% if sm_after.get('crc_errors', 0) > 0 %}text-warning{% else %}text-success{% endif %}">
-            {{ sm_after.get('crc_errors', 0) }}
+        <div class="stat-value {% if sm_after.get('crc_errors') is not none and sm_after.get('crc_errors') > 0 %}text-warning{% else %}text-success{% endif %}">
+            {{ sm_after.get('crc_errors') if sm_after.get('crc_errors') is not none else 'N/A' }}
         </div>
         <div class="stat-desc">Cable/bus interface faults</div>
     </div>
