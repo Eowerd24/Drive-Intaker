@@ -1,75 +1,141 @@
-# Proxmox SSD Intake Station (Web GUI)
+# 💽 Drive Intaker
 
-A lightweight, self-contained **Podman-deployed web application with a GUI** for processing, inspecting, wiping, testing, benchmarking, and grading enterprise SATA, SAS, and NVMe SSDs one drive at a time on a Proxmox VE host.
+[![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Podman](https://img.shields.io/badge/Podman-Quadlet%20Ready-892CA0?logo=podman&logoColor=white)](https://podman.io/)
+[![Proxmox VE](https://img.shields.io/badge/Proxmox%20VE-7.x%20%7C%208.x-E57000?logo=proxmox&logoColor=white)](https://www.proxmox.com/)
+[![Tests](https://img.shields.io/badge/Tests-35%2F35%20Passing-brightgreen?logo=pytest&logoColor=white)](tests/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
----
-
-## Key Highlights
-
-- **Proxmox Boot Disk Protection**: Auto-detects parent physical disks for root partitions, LVM volume groups, ZFS pools, and boot/EFI partitions, with optional manual override. Protected disks cannot be selected.
-- **Strict Storage Safety Guards**: Refuses mounted disks, active swap, LVM physical volumes, ZFS pool members, and individual partitions.
-- **Double Confirmation & Serial Verification**: Requires entering the candidate drive's exact serial number before destructive operations begin.
-- **Safe Firmware Handling**: Uses `fwupd` for discovery and update checking; clearly distinguishes `Updatable` from `Update available`; never automatically flashes unknown OEM/server SSDs.
-- **Fio Verification & Stress Testing**: Full-device destructive write with CRC32C verification metadata followed by a full-device read verification pass, plus sequential read/write and 4K random mixed benchmarks.
-- **Live Real-Time Streaming**: Server-Sent Events (SSE) stream line-by-line terminal output, live progress bars, and stage transitions directly to the browser.
-- **Persistent Filesystem Reports**: Canonical `REPORT.md` and structured `run.json` saved to `/root/ssd-intake/YYYYMMDD-HHMMSS-SERIAL/` on the host, fully accessible even if the container is removed.
-- **Manual Grading Workflow**: Assign classifications (`PASS-A`, `PASS-B`, `LAB`, `REJECT`) directly in the UI with technician notes.
+> **A self-contained Podman web application with a modern dark GUI for safely inspecting, wiping, testing, firmware checking, stress-verifying, benchmarking, and grading enterprise SATA, SAS, and NVMe SSDs one drive at a time on Proxmox VE.**
 
 ---
 
-## Architecture Overview
+## 📑 Table of Contents
 
-```text
-├── app/
-│   ├── config.py             # Configuration & environment handling
-│   ├── main.py               # FastAPI web server, REST API & SSE streaming
-│   ├── core/
-│   │   ├── disk_detector.py  # Discovers block devices & enriches metadata
-│   │   ├── safety.py         # Strict safety validator & system disk protection
-│   │   ├── runner.py         # Subprocess execution engine & log streamer
-│   │   ├── smart_parser.py   # Parses SATA/NVMe SMART data & before/after diffs
-│   │   ├── firmware.py       # fwupd integration (Updatable vs Update Available)
-│   │   ├── fio_runner.py     # Full write + CRC verify & performance benchmarks
-│   │   ├── reporter.py       # Report generator (REPORT.md & run.json)
-│   │   └── intake_job.py     # Intake state machine & single concurrency lock
-│   ├── templates/            # Jinja2 HTML templates
-│   └── static/               # Vanilla CSS & JavaScript (zero node build step)
-├── deploy/
-│   ├── ssd-intake.container  # Quadlet systemd definition for Podman
-│   ├── ssd-intake.service    # Alternative standard systemd unit file
-│   └── ssd-intake.env.example# Example environment configuration
-├── tests/                    # Comprehensive pytest test suite
-├── Containerfile             # Rootful Podman container image definition
-├── entrypoint.sh             # Container startup script
-└── SAFETY.md                 # Detailed threat model & security architecture
+- [Overview](#-overview)
+- [Key Features](#-key-features)
+- [Intake Workflow Pipeline](#-intake-workflow-pipeline)
+- [Safety Architecture & Protections](#-safety-architecture--protections)
+- [Zero-Host Data Footprint](#-zero-host-data-footprint)
+- [Quick Start](#-quick-start)
+  - [Method 1: Standalone Podman (Recommended)](#method-1-standalone-podman-recommended)
+  - [Method 2: Podman Quadlet (Systemd Managed)](#method-2-podman-quadlet-systemd-managed)
+  - [Accessing the GUI](#accessing-the-web-gui)
+- [Grading & Qualification Schema](#-grading--qualification-schema)
+- [REST API Endpoints](#-rest-api-endpoints)
+- [Development & Automated Testing](#-development--automated-testing)
+- [Project Structure](#-project-structure)
+
+---
+
+## 🔍 Overview
+
+Enterprise SSDs pulled from decommissioned servers, eBay lots, or lab clusters need rigorous qualification before being trusted in production ZFS pools or Ceph clusters. 
+
+**Drive Intaker** packages the industry-standard qualification methodology into an easy-to-use, web-based intake console that runs directly on your Proxmox VE host inside an isolated Podman container.
+
+```mermaid
+flowchart LR
+    A["🔌 Insert SSD"] --> B["🔎 Auto-Discovery & Health Snapshot"]
+    B --> C["🛡️ Pre-Flight Safety Checks"]
+    C --> D["🧹 Secure Wipe / Sanitize"]
+    D --> E["⚡ SMART Self-Tests"]
+    E --> F["📦 fwupd Firmware Check"]
+    F --> G["💾 100% Write + CRC32C Verification"]
+    G --> H["📈 Fio Storage Benchmarks"]
+    H --> I["📊 Comprehensive REPORT.md & Grade"]
 ```
 
 ---
 
-## Deployment & Quickstart
+## ✨ Key Features
 
-### Prerequisites on Proxmox Host
+- **🛡️ Uncompromising Safety Engine**: Automatic parent disk detection protects Proxmox boot/system drives (`/`, `/boot`, `/boot/efi`, LVM root volume groups, and ZFS root pools).
+- **🔒 Persistent User Disk Locking**: Permanently lock secondary, pool, or backup disks from the GUI to permanently forbid all destructive operations.
+- **⚡ Modular Intake Modes**:
+  - **Regular Intake Pipeline**: Complete end-to-end qualification (Wipe &rarr; SMART Short &rarr; fwupd &rarr; 100% Write + CRC Verify &rarr; Benchmarks &rarr; Report).
+  - **⚡ SMART Short Self-Test Only (~5m)**: Standalone, non-destructive quick health verification.
+  - **⚡ SMART Extended Self-Test Only (~60m)**: Standalone, non-destructive deep surface & sector scan.
+  - **🛡️ Safe Inventory Mode**: Non-destructive baseline snapshot and firmware availability query.
+  - **⚙️ Custom Workflows**: Toggle individual verification stages as needed.
+- **📡 Real-Time SSE Log Streaming**: Live terminal output streamed line-by-line via Server-Sent Events (SSE) with interactive stage progress indicators.
+- **📦 Zero-Host Footprint**: All reports, registries, and diagnostic logs live **strictly inside the container storage**. Zero residual files are written to the physical Proxmox host.
+- **🏷️ Interactive Grading & Review**: Classify drives (`PASS-A`, `PASS-B`, `MONITOR`, `REJECT`, `WIPED-ONLY`) directly in the UI and add technician notes to persistent Markdown reports.
+- **🧹 Instant Log Purge**: Single-click purge option in the GUI and REST API to delete all historical logs and reports.
+- **🔌 Enterprise Controller Support**: Inspects raw ATA/SCSI/NVMe registers via `smartctl -x`, `hdparm -I`, `udevadm`, `lsscsi`, and `lsblk`.
 
-Ensure `podman` is installed on your Proxmox VE host:
+---
 
+## 🔄 Intake Workflow Pipeline
+
+When executing the **Regular Intake Pipeline**, Drive Intaker runs through 8 distinct stages:
+
+```
+[1. INITIAL_INVENTORY]  ──► [2. SAFETY_CHECKS]   ──► [3. BEFORE_SNAPSHOT]
+                                                             │
+[6. FULL_VERIFY]        ◄── [5. FIRMWARE_CHECK]  ◄── [4. WIPE & SHORT SMART]
+       │
+       ▼
+[7. BENCHMARKS]         ──► [8. AFTER_SNAPSHOT & REPORT GENERATION]
+```
+
+1. **Initial Inventory**: Queries device topology, model, serial, capacity, transport (SATA/SAS/NVMe), and baseline controller properties.
+2. **Safety Checks**: Validates whole-disk status, ensures the disk is not mounted, swap-active, LVM-active, ZFS-active, or user-locked, and confirms serial match.
+3. **Before Snapshot**: Records baseline SMART metrics (Power-On Hours, Wear Percentage, Reallocated Sectors, CRC Errors, Temperature, TBW).
+4. **Secure Wipe & SMART Short**: Erases drive partitions/signatures (`blkdiscard` / `hdparm --security-erase` / `nvme format`) and executes a ~5-minute internal drive self-test.
+5. **Firmware Review**: Runs `fwupdmgr` to check device updatability and flag firmware updates (automatic flashing is disabled for OEM safety).
+6. **Full-Disk Write + CRC32C Verify**: Performs a 100% full-capacity sequential pattern write followed by a 100% full-capacity read verification pass using `fio` with CRC32C verification blocks.
+7. **Performance Benchmarks**: Executes standardized sequential read/write and 4K random mixed (70/30) IOPS benchmarks.
+8. **After Snapshot & Report**: Captures final post-stress SMART state, calculates metric diffs (verifying zero reallocated sectors appeared during stress), and generates `REPORT.md` and `run.json`.
+
+---
+
+## 🛡️ Safety Architecture & Protections
+
+| Protection | Implementation |
+| :--- | :--- |
+| **Proxmox Boot Disk Protection** | Auto-detects physical disks backing `/`, `/boot`, `/boot/efi`, LVM PVs, and ZFS root pools (`/dev/nvme0n1`). |
+| **Permanent Disk Lock** | Administrators can lock any disk (`🔒 Lock Disk`). The lock persists in container storage and permanently forbids data destruction. |
+| **Whole Disks Only** | Partitions (`/dev/sda1`, `/dev/nvme0n1p1`) and virtual loop devices are strictly rejected. |
+| **In-Use Disk Prevention** | Refuses any disk with active mounts, active swap, LVM volume memberships, ZFS pool memberships, or RAID holders. |
+| **Serial Confirmation** | Destructive actions require typing the exact drive serial number before execution. |
+| **Single-Job Concurrency** | Hardware locking prevents multiple destructive jobs from running simultaneously. |
+
+*For complete threat models and design details, see [SAFETY.md](SAFETY.md).*
+
+---
+
+## 📦 Zero-Host Data Footprint
+
+All intake data, diagnostic outputs, and logs are stored **strictly within the container storage** (or named container volume `ssd-intake-data`). 
+
+- No files or directories are created on the physical host machine.
+- Clicking **"Delete All Logs & Reports"** in the GUI completely clears stored run records.
+- Removing the container leaves your Proxmox VE host 100% clean.
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+Install Podman on your Proxmox host:
 ```bash
 apt update && apt install -y podman
 ```
 
-All data and logs live **strictly inside the container**. Nothing touches or remains on the physical host filesystem outside the container.
-
 ---
 
-### Method 1: Running Standalone via Podman CLI
+### Method 1: Standalone Podman (Recommended)
 
-#### 1. Build the Container Image
-
+#### 1. Clone & Build
 ```bash
+git clone https://github.com/Eowerd24/Drive-Intaker.git
+cd Drive-Intaker
 podman build -t ssd-intake:latest .
 ```
 
-#### 2. Run the Container (Rootful Privileged Execution)
-
+#### 2. Launch Container
 ```bash
 sudo podman run -d --name ssd-intake \
     --privileged \
@@ -85,216 +151,130 @@ sudo podman run -d --name ssd-intake \
     localhost/ssd-intake:latest
 ```
 
-> **Root Privileges for Storage Hardware**: Block device ioctls (`smartctl`, `hdparm`, `fio`) require `CAP_SYS_RAWIO`. Running rootful Podman (`sudo podman` or systemd Quadlet in `/etc/containers/systemd/`) ensures direct raw access to all disk controllers.
->
-> **Persistent Disk Locking**: Administrators can permanently lock sensitive or secondary drives from the GUI (`🔒 Lock Disk`). The lock persists in container storage (`locked_disks.json`) and permanently disables all wiping, benchmarking, and destructive workflows on that device.
->
-> **Data Storage Isolation**: All reports, logs, locked drive registries, and diagnostic files are stored within the container volume `ssd-intake-data` (or internal container filesystem). No residual files are written to the physical host. When you remove the container/volume or click **Delete All Logs & Reports** in the GUI, the host remains completely clean.
+---
 
-#### 3. Access the Web GUI
+### Method 2: Podman Quadlet (Systemd Managed)
 
-Access the web interface via SSH port forwarding from your workstation:
+Deploy as a native systemd unit managed by Proxmox:
+
+```bash
+# 1. Copy Quadlet container definition
+cp deploy/ssd-intake.container /etc/containers/systemd/ssd-intake.container
+
+# 2. Reload systemd
+systemctl daemon-reload
+
+# 3. Start the service
+systemctl start ssd-intake
+systemctl enable ssd-intake
+```
+
+---
+
+### 🌐 Accessing the Web GUI
+
+For security, the application binds locally to port `7492`. Access the GUI from your workstation via SSH port forwarding:
 
 ```bash
 ssh -L 7492:127.0.0.1:7492 root@<proxmox-ip>
 ```
 
-Then open `http://localhost:7492` in your web browser.
+Open your browser and navigate to:
+👉 **[http://localhost:7492](http://localhost:7492)**
+
+| Page | URL | Description |
+| :--- | :--- | :--- |
+| **Dashboard** | `http://localhost:7492/` | Discovered disks, eligibility overview, system status |
+| **Drive Details** | `http://localhost:7492/drives/{name}` | Hardware specs, raw diagnostics (`smartctl -x`, `hdparm -I`), Lock Disk, Short & Long SMART buttons |
+| **Intake Setup** | `http://localhost:7492/intake` | Workflow selection, custom toggles, serial confirmation |
+| **Live Job Console** | `http://localhost:7492/jobs/current` | Real-time terminal SSE log streaming and stage progress |
+| **Reports Archive** | `http://localhost:7492/reports` | Historical intake records, grading, report delete & purge |
 
 ---
 
-### Method 2: Running via Podman Quadlet (Systemd Managed)
+## 🏆 Grading & Qualification Schema
 
-Podman Quadlet is the recommended method on Proxmox VE / Debian to manage containers as native systemd units.
+Each processed SSD can be classified directly in the web UI after reviewing the generated `REPORT.md`:
 
-#### 1. Copy the Quadlet Definition
+| Classification | Meaning | Criteria |
+| :--- | :--- | :--- |
+| **`PASS-A`** | Production Grade | 100% CRC verification pass, 0 bad sectors, &ge;90% endurance remaining, full benchmark performance. Suitable for primary storage / hypervisor pools. |
+| **`PASS-B`** | Secondary / Lab Grade | Passed verification, 0 bad sectors, 70–89% wear remaining or minor cosmetic caveats. Suitable for secondary storage, dev VMs, or scratch pools. |
+| **`MONITOR`** | Watchlist | Minor recoverable interface errors, high power-on hours (&gt;40,000 hrs), or wear &lt;70%. |
+| **`REJECT`** | Failed / Unusable | SMART health failure, uncorrectable read/write errors during full CRC verify, or bad sectors detected during testing. Must not be placed in service. |
+| **`WIPED-ONLY`** | Sanitized | Securely wiped and short-tested; pending full stress verification. |
+
+---
+
+## 🔌 REST API Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/system` | Host information, protected system disks, storage config |
+| `GET` | `/api/drives` | Discovers and inspects all block storage devices |
+| `GET` | `/api/drives/{name}` | Detailed metadata and raw diagnostics for a specific drive |
+| `POST` | `/api/drives/{name}/lock` | Permanently locks a disk against all data destruction |
+| `POST` | `/api/jobs` | Starts an intake workflow job |
+| `GET` | `/api/jobs/current` | Status of the active intake job |
+| `POST` | `/api/jobs/cancel` | Gracefully terminates the running job |
+| `GET` | `/api/jobs/stream` | Server-Sent Events (SSE) log and stage stream |
+| `GET` | `/api/reports` | Lists all historical intake reports |
+| `GET` | `/api/reports/{run_id}` | JSON metadata for a specific run record |
+| `POST` | `/api/reports/{run_id}/classify` | Updates report classification grade and technician notes |
+| `DELETE`| `/api/reports/{run_id}` | Deletes a single intake report and diagnostic folder |
+| `POST` | `/api/reports/purge` | Permanently deletes all historical reports and logs |
+
+---
+
+## 🧪 Development & Automated Testing
+
+Drive Intaker includes a comprehensive test suite covering safety validation, mock storage tools, report parsing, and API routes:
 
 ```bash
-cp deploy/ssd-intake.container /etc/containers/systemd/ssd-intake.container
-```
+# Set up virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
-#### 2. Reload Systemd and Start Service
-
-```bash
-systemctl daemon-reload
-systemctl start ssd-intake
-systemctl enable ssd-intake
-```
-
-#### 3. Check Service Status
-
-```bash
-systemctl status ssd-intake
-```
-
----
-
-## Web GUI Walkthrough
-
-### 1. Dashboard (`/`)
-- Hostname and protected boot disk display.
-- Detected physical storage drives with status badges (`Ready`, `Protected`, `Mounted`, `LVM`, `ZFS`, `Swap`).
-- Quick actions to inspect or launch intake.
-- Recent completed intake reports with grading badges.
-
-### 2. Device Details (`/drives/{drive_name}`)
-- In-depth hardware metadata (Vendor, Model, Serial, Firmware, Interface Speed, Temperature).
-- Pre-flight safety eligibility checklist.
-- Health attributes (Power-on Hours, Wear Remaining %, Reallocated Sectors, CRC Errors, TBW).
-- Dedicated action buttons:
-  - **`⚡ Run Long SMART Test (~60m)`**: Dedicated button to trigger a standalone drive internal extended self-test without destructive wiping.
-  - **`+ Launch Regular Intake`**: Jumps to the standard intake preparation screen.
-- Collapsible raw diagnostics (`smartctl -x`, `hdparm -I`, `udevadm`, `lsblk -O`).
-
-### 3. Intake Setup (`/intake`)
-- Candidate drive selection.
-- Workflow options:
-  - **Regular Intake Pipeline (Recommended)**: Secure Wipe &rarr; SMART Short (~5m) &rarr; fwupd Check &rarr; Full Write+CRC Verify &rarr; Performance Benchmarks &rarr; Report.
-  - **SMART Extended Self-Test Only (~60m)**: Standalone, non-destructive drive internal surface & sector test with before/after logging.
-  - **Safe Inventory Only**: Non-destructive diagnostic snapshot & firmware check without wipe.
-  - **Custom Workflow**: Selective stage toggling.
-- **Safety Confirmation**: Explicit comparison of Candidate vs Protected System Disk with exact serial confirmation.
-- **Serial Confirmation**: Start button is locked until the exact drive serial is typed.
-
-### 4. Live Progress Console (`/jobs/current`)
-- Visual stage tracker.
-- Real-time streaming terminal log via Server-Sent Events (SSE).
-- Auto-scroll toggle and one-click log copy.
-- Safe cancellation support.
-
-### 5. Report Viewer & Grading (`/reports/{run_id}`)
-- Full diagnostic report and rendered `REPORT.md`.
-- SMART Before vs After comparison table.
-- Fio verification and benchmark metrics table.
-- Interactive drive grading buttons (`PASS-A`, `PASS-B`, `LAB`, `REJECT`) with technician notes.
-- Direct links to raw log artifacts (`before/`, `after/`, `tests/`, `benchmarks/`, `firmware/`).
-- One-click **Delete Report** action to purge individual runs.
-
-### 6. Log Management & Storage Purge (`/reports`)
-- Persistent storage of all drive data on the host at `/root/ssd-intake/`.
-- **Delete All Logs & Reports**: A dedicated purge button on the reports archive page allows wiping all historical run logs, benchmark traces, and diagnostic artifacts in one click with confirmation.
-- **REST API**:
-  - `DELETE /api/reports/{run_id}`: Delete a single report run.
-  - `POST /api/reports/purge`: Purge all historical logs and reports.
-
----
-
-## Workflow Comparison
-
-| Stage | Full Intake | Inventory Only | Custom |
-| :--- | :---: | :---: | :---: |
-| 1. Initial Snapshot | &#10004; | &#10004; | &#10004; |
-| 2. Pre-flight Safety Checks | &#10004; | &#10004; | &#10004; |
-| 3. Serial Number Confirmation | &#10004; | _Bypassed_ | &#10004; (if destructive) |
-| 4. Wipe GPT/MBR & Signatures | &#10004; | _Skipped_ | Configurable |
-| 5. SMART Short Self-Test | &#10004; | _Skipped_ | Configurable |
-| 6. SMART Extended Self-Test | &#10004; | _Skipped_ | Optional Toggle |
-| 7. Firmware Availability Check | &#10004; | &#10004; | Optional Toggle |
-| 8. Full-Device Write + CRC Verify | &#10004; | _Skipped_ | Optional Toggle |
-| 9. Performance Benchmarks | &#10004; | _Skipped_ | Optional Toggle |
-| 10. Final SMART Snapshot & Diff | &#10004; | &#10004; | &#10004; |
-| 11. Canonical REPORT.md & run.json | &#10004; | &#10004; | &#10004; |
-
----
-
-## Persistent Report Structure
-
-Each run creates a timestamped folder on the host:
-
-```text
-/root/ssd-intake/YYYYMMDD-HHMMSS-SERIAL/
-├── REPORT.md                  # Canonical human-readable report
-├── run.json                   # Structured machine-readable metadata
-├── before/                    # Pre-test baseline hardware state
-│   ├── smart.txt
-│   ├── smart.json
-│   ├── hdparm.txt
-│   ├── udev.txt
-│   └── lsblk.txt
-├── after/                     # Post-test state & final SMART
-│   ├── smart.txt
-│   └── smart.json
-├── tests/                     # Test & verification logs
-│   ├── smart-short-result.txt
-│   ├── smart-long-result.txt
-│   ├── full-write.txt
-│   └── full-verify.txt
-├── benchmarks/                # Performance outputs
-│   ├── seq-read.txt
-│   ├── seq-write.txt
-│   └── rand-mixed.txt
-└── firmware/                  # fwupd outputs
-    ├── refresh.txt
-    ├── devices.txt
-    └── updates.txt
-```
-
-Symlink `/root/ssd-intake/latest` always points to the most recent run directory.
-
----
-
-## Running the Automated Test Suite
-
-To run all unit and safety tests locally:
-
-```bash
+# Run pytest suite
 pytest -v
 ```
 
-Tests verify:
-- System disk auto-detection across partitions, LVM volume groups, and ZFS pools.
-- Protection of system disks against selection.
-- Partition rejection (whole disks only).
-- Rejection of mounted disks, active swap, LVM physical volumes, and ZFS pool members.
-- Strict allowlist validation against path traversal and arbitrary inputs.
-- Mandatory exact serial number confirmation for destructive actions.
-- Single concurrency locking (rejecting concurrent jobs with HTTP 409).
-- Accurate `Updatable` vs `Update Available` firmware parsing.
-- Fio output parsing and SMART delta calculations.
+All 35 unit and integration tests run in mock mode without requiring physical test SSDs or root privileges.
 
 ---
 
-## Managing the Service
+## 📂 Project Structure
 
-### Updating the Application
-
-```bash
-# Pull or edit changes, then rebuild
-podman build -t ssd-intake:latest .
-
-# Restart the service (if using Quadlet)
-systemctl restart ssd-intake
-```
-
-### Viewing Container Logs
-
-```bash
-# If using Quadlet / systemd
-journalctl -u ssd-intake -f
-
-# If running standalone Podman
-podman logs -f ssd-intake
-```
-
-### Stopping & Removing
-
-```bash
-# Stop standalone container
-podman stop ssd-intake && podman rm ssd-intake
-
-# Or disable Quadlet service
-systemctl stop ssd-intake && systemctl disable ssd-intake
-rm -f /etc/containers/systemd/ssd-intake.container
-systemctl daemon-reload
+```text
+Drive-Intaker/
+├── Containerfile             # Rootful Podman container build definition
+├── entrypoint.sh             # Container runtime entrypoint & startup banner
+├── requirements.txt          # Python dependencies (FastAPI, Uvicorn, Jinja2, Pydantic, pytest)
+├── SAFETY.md                 # Security model, threat analysis & safety invariants
+├── app/
+│   ├── config.py             # App settings (ports, storage directories, system overrides)
+│   ├── main.py               # FastAPI application, route handlers & SSE streaming
+│   ├── core/
+│   │   ├── disk_detector.py  # Discovers block storage devices & enriches metadata
+│   │   ├── safety.py         # Strict safety validator, boot disk detector & disk locking
+│   │   ├── runner.py         # Subprocess runner & asynchronous line-by-line logger
+│   │   ├── smart_parser.py   # SATA/NVMe SMART parsing & before/after health diff engine
+│   │   ├── firmware.py       # fwupd integration (Updatable vs Update Available checking)
+│   │   ├── fio_runner.py     # Full write + CRC32C verify & fio performance workloads
+│   │   ├── reporter.py       # Report generator (REPORT.md, run.json, delete & purge)
+│   │   └── intake_job.py     # State machine coordinator for intake workflows
+│   ├── templates/            # Jinja2 HTML templates (Dashboard, Details, Intake, Progress, Reports)
+│   └── static/               # Dark homelab CSS stylesheet & vanilla JavaScript
+├── deploy/
+│   ├── ssd-intake.container  # Podman Quadlet systemd definition
+│   ├── ssd-intake.service    # Standard systemd service file
+│   └── ssd-intake.env.example# Example environment configuration template
+└── tests/                    # Automated pytest verification test suite
 ```
 
 ---
 
-## Reference Shell Script Migration
+## 📜 License
 
-The original `ssd-intake.sh` script is preserved in the repository as a fallback and reference implementation. The web GUI retains full parity with its safety checks and report format while adding:
-- Interactive web UI with real-time SSE progress streaming.
-- Immediate visual indicators for drive eligibility and blocker reasons.
-- Before/after SMART delta comparison tables.
-- Interactive manual classification grading and persistence.
-- Zero risk of typos during command line execution.
+MIT License. See [LICENSE](LICENSE) for details.
