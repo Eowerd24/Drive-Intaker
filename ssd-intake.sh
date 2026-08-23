@@ -5,7 +5,7 @@ set -Eeuo pipefail
 # One candidate drive per run.
 # Destructive operations are gated by multiple checks and explicit confirmation.
 
-VERSION="0.1.0"
+VERSION="1.1.0"
 if [[ $EUID -eq 0 ]]; then
   ROOT_DIR="${SSD_INTAKE_ROOT_DIR:-/root/ssd-intake}"
 else

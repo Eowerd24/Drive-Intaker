@@ -73,7 +73,7 @@ Enterprise SSDs (e.g. Samsung SM863/PM863/PM883, Micron 5200/5300, Intel/Solidig
   - `Updatable` means `fwupd` has a plugin capable of communicating with this hardware type. It does **not** mean an update exists.
   - `Update Available` means an enabled remote (LVFS or OEM) offers a newer firmware binary.
 - **Zero Automatic Flashing**:
-  - Version 1.0.0 of this tool strictly records and displays firmware availability.
+  - Version 1.1.0 of this tool strictly records and displays firmware availability.
   - If a firmware update is discovered, the drive is prominently marked:
     > `Firmware update available — manual review required`
   - Automatic flashing is intentionally disabled to avoid bricking OEM drives with generic firmware payloads.

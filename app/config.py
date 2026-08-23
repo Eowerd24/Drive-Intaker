@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 class Settings(BaseModel):
     app_name: str = "Proxmox SSD Intake Station"
-    app_version: str = "1.0.0"
+    app_version: str = "1.1.0"
     
     # Report and log storage lives strictly inside the container (/app/reports)
     # Nothing is written to the physical host filesystem outside the container

@@ -11,7 +11,7 @@ LOG_LEVEL="${SSD_INTAKE_LOG_LEVEL:-info}"
 
 echo "=========================================================="
 echo " Starting Proxmox SSD Intake Station (Web GUI)"
-echo " Version: 1.0.0"
+echo " Version: 1.1.0"
 echo " Reports Directory: $REPORTS_DIR"
 echo " Listening on:      http://$BIND_HOST:$BIND_PORT"
 echo "=========================================================="

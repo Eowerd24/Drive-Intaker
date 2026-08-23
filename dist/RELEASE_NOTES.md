@@ -1,6 +1,6 @@
-# Drive Intaker v1.0.0 - Enterprise SSD Intake Station & Qualification Web GUI
+# Drive Intaker v1.1.0 - Enterprise SSD Intake Station & Qualification Web GUI
 
-We are excited to announce the initial release of **Drive Intaker v1.0.0**, a self-contained Podman web application with a modern dark GUI for safely inspecting, wiping, testing, firmware checking, stress-verifying, benchmarking, and grading enterprise SATA, SAS, and NVMe SSDs.
+We are excited to announce the release of **Drive Intaker v1.1.0**, featuring manual SMART workflows, least-privilege sudoers execution, permission fixes, and improved container deployment options.
 
 ---
 
@@ -66,7 +66,8 @@ Access the Web GUI at **`http://localhost:7492`** (or via `ssh -L 7492:127.0.0.1
 
 | File | SHA-256 Checksum |
 | :--- | :--- |
-| `drive-intaker-1.0.0.tar.gz` | `3561480271455c80f07950d494c307d55c4a5725513c46eb71654a1301f75706` |
-| `drive-intaker-1.0.0.zip` | `127cdb4956dee00deffff30aa92439b7361cfe1f16fe15ac1c8d24bd4cb92d13` |
+| `drive-intaker-1.1.0.tar.gz` | `ce92d002c52c2fd42a91736eeaf2988d3b8fcd2f75d4b52bad2bfd11ab8d4d88` |
+| `drive-intaker-1.1.0.zip` | `753c725733383d18803ae4598dc3055d67ac678accd1537cfd319d6a73671fc8` |
 | `SHA256SUMS.txt` | Included with release bundle |
+
 

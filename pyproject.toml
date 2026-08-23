@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "drive-intaker"
-version = "1.0.0"
+version = "1.1.0"
 description = "A self-contained Podman web application with a GUI for inspecting, wiping, testing, firmware checking, benchmarking, and grading enterprise SSDs on Linux."
 readme = "README.md"
 authors = [
