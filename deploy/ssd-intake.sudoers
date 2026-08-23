@@ -1,0 +1,26 @@
+# /etc/sudoers.d/ssd-intake
+# Proxmox SSD Intake Station - Least-Privilege Sudoers Configuration
+#
+# Allows an unprivileged user (or system service account) to execute ONLY the
+# explicit low-level storage inspection, wiping, and benchmarking binaries without password.
+#
+# Installation:
+#   sudo cp deploy/ssd-intake.sudoers /etc/sudoers.d/ssd-intake
+#   sudo chmod 0440 /etc/sudoers.d/ssd-intake
+#   sudo visudo -c  # Verify syntax
+
+# Replace '%sudo' or 'ssd-intake' with your dedicated service account or %group
+%sudo ALL=(root) NOPASSWD: \
+    /usr/sbin/smartctl, \
+    /sbin/hdparm, /usr/sbin/hdparm, \
+    /usr/bin/fio, \
+    /usr/sbin/sgdisk, \
+    /usr/sbin/wipefs, \
+    /usr/bin/udevadm, \
+    /usr/sbin/partprobe, \
+    /usr/sbin/blockdev, \
+    /sbin/pvs, /usr/sbin/pvs, \
+    /sbin/lvs, /usr/sbin/lvs, \
+    /sbin/zpool, /usr/sbin/zpool, \
+    /usr/bin/fwupdmgr, \
+    /usr/bin/umount, /bin/umount

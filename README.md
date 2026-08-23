@@ -4,7 +4,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Podman](https://img.shields.io/badge/Podman-Quadlet%20Ready-892CA0?logo=podman&logoColor=white)](https://podman.io/)
 [![Linux](https://img.shields.io/badge/Linux-Debian%20%7C%20Ubuntu%20%7C%20RHEL%20%7C%20Proxmox-FCC624?logo=linux&logoColor=black)](https://kernel.org/)
-[![Tests](https://img.shields.io/badge/Tests-35%2F35%20Passing-brightgreen?logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-37%2F37%20Passing-brightgreen?logo=pytest&logoColor=white)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 > **A self-contained Podman web application with a modern dark GUI for safely inspecting, wiping, testing, firmware checking, stress-verifying, benchmarking, and grading enterprise SATA, SAS, and NVMe SSDs on any Linux machine (servers, hypervisors, homelabs, or dedicated test benches).**
@@ -22,8 +22,9 @@
 - [Safety Architecture & Protections](#-safety-architecture--protections)
 - [Zero-Host Data Footprint](#-zero-host-data-footprint)
 - [Quick Start](#-quick-start)
-  - [Method 1: Standalone Podman CLI (Recommended)](#method-1-standalone-podman-cli-recommended)
-  - [Method 2: Podman Quadlet / Systemd Service](#method-2-podman-quadlet--systemd-service)
+  - [Method 1: Podman Container (Recommended)](#method-1-podman-container-recommended)
+  - [Method 2: Native Host Execution (Least-Privilege Sudoers)](#method-2-native-host-execution-least-privilege-sudoers)
+  - [Method 3: Podman Quadlet / Systemd Service](#method-3-podman-quadlet--systemd-service)
   - [Accessing the Web GUI](#accessing-the-web-gui)
 - [Grading & Qualification Schema](#-grading--qualification-schema)
 - [REST API Endpoints](#-rest-api-endpoints)
@@ -166,16 +167,18 @@ sudo pacman -S podman
 
 ---
 
-### Method 1: Standalone Podman CLI (Recommended)
+### Method 1: Podman Container (Recommended)
 
-#### 1. Clone & Build
+#### 1. Build Image
+Build the container under `sudo` so it is stored directly in root's Podman storage:
 ```bash
 git clone https://github.com/Eowerd24/Drive-Intaker.git
 cd Drive-Intaker
-podman build -t ssd-intake:latest .
+sudo podman build -t ssd-intake:latest .
 ```
+*(If you already built the image without sudo as a regular user, transfer it with `podman save localhost/ssd-intake:latest | sudo podman load`)*
 
-#### 2. Launch Container (Rootful Privileged Execution)
+#### 2. Launch Container
 ```bash
 sudo podman run -d --name ssd-intake \
     --privileged \
@@ -193,20 +196,29 @@ sudo podman run -d --name ssd-intake \
 
 ---
 
-### Method 2: Podman Quadlet / Systemd Service
+### Method 2: Native Host Execution (Least-Privilege Sudoers)
 
-Deploy as a native systemd unit managed by your OS:
+If running directly on the host without container overhead:
 
 ```bash
-# 1. Copy Quadlet container definition
+# 1. Install least-privilege sudoers whitelist
+sudo cp deploy/ssd-intake.sudoers /etc/sudoers.d/ssd-intake
+sudo chmod 0440 /etc/sudoers.d/ssd-intake
+
+# 2. Run the application
+SSD_INTAKE_USE_SUDO=1 python3 -m uvicorn app.main:app --host 127.0.0.1 --port 7492
+```
+
+---
+
+### Method 3: Podman Quadlet / Systemd Service
+
+Deploy as a persistent system service managed by systemd:
+
+```bash
 sudo cp deploy/ssd-intake.container /etc/containers/systemd/ssd-intake.container
-
-# 2. Reload systemd
 sudo systemctl daemon-reload
-
-# 3. Start and enable the service
-sudo systemctl start ssd-intake
-sudo systemctl enable ssd-intake
+sudo systemctl enable --now ssd-intake
 ```
 
 ---
@@ -280,7 +292,7 @@ pip install -r requirements.txt
 pytest -v
 ```
 
-All 35 unit and integration tests run in mock mode without requiring physical test SSDs or root privileges.
+All 36 unit and integration tests run in mock mode without requiring physical test SSDs or root privileges.
 
 ---
 
@@ -288,12 +300,13 @@ All 35 unit and integration tests run in mock mode without requiring physical te
 
 ```text
 Drive-Intaker/
-├── Containerfile             # Rootful Podman container build definition
-├── entrypoint.sh             # Container runtime entrypoint & startup banner
+├── Containerfile             # Podman container build definition
+├── entrypoint.sh             # Container runtime entrypoint
+├── ssd-intake.sh             # Standalone bash CLI intake station script
 ├── requirements.txt          # Python dependencies (FastAPI, Uvicorn, Jinja2, Pydantic, pytest)
 ├── SAFETY.md                 # Security model, threat analysis & safety invariants
 ├── app/
-│   ├── config.py             # App settings (ports, storage directories, system overrides)
+│   ├── config.py             # App settings (ports, storage directories, sudo options)
 │   ├── main.py               # FastAPI application, route handlers & SSE streaming
 │   ├── core/
 │   │   ├── disk_detector.py  # Discovers block storage devices & enriches metadata
@@ -307,6 +320,7 @@ Drive-Intaker/
 │   ├── templates/            # Jinja2 HTML templates (Dashboard, Details, Intake, Progress, Reports)
 │   └── static/               # Dark homelab CSS stylesheet & vanilla JavaScript
 ├── deploy/
+│   ├── ssd-intake.sudoers    # Least-privilege sudoers whitelist for non-root host execution
 │   ├── ssd-intake.container  # Podman Quadlet systemd definition
 │   ├── ssd-intake.service    # Standard systemd service file
 │   └── ssd-intake.env.example# Example environment configuration template

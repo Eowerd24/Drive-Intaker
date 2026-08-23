@@ -264,6 +264,150 @@
 </div>
 {% endif %}
 
+<!-- Self-Test Log Table if available -->
+{% if drive.smart_report and drive.smart_report.self_test_entries %}
+<div class="card section-card mb-4">
+    <div class="card-header">
+        <h3>SMART Self-Test History</h3>
+        <span class="header-note">{{ drive.smart_report.self_test_entries | length }} test records logged</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Test Type</th>
+                    <th>Status</th>
+                    <th>Lifetime Hours</th>
+                    <th>First LBA Error</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in drive.smart_report.self_test_entries %}
+                <tr>
+                    <td>{{ entry.num }}</td>
+                    <td><strong>{{ entry.test_type }}</strong></td>
+                    <td>
+                        {% if 'Completed without error' in entry.status or 'passed' in entry.status | lower %}
+                            <span class="badge badge-success">{{ entry.status }}</span>
+                        {% elif 'in progress' in entry.status | lower %}
+                            <span class="badge badge-warning">{{ entry.status }}</span>
+                        {% else %}
+                            <span class="badge badge-danger">{{ entry.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ entry.lifetime_hours or 'N/A' }} hrs</td>
+                    <td><code>{{ entry.lba_first_error }}</code></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Manual Diagnostic Tools: Terminal Commands & SMART Paste Box -->
+<div class="grid-2col mb-4">
+    <!-- Manual Terminal Commands Card -->
+    <div class="card section-card">
+        <div class="card-header">
+            <h3>&#128187; Run SMART Tests by Hand</h3>
+            <span class="header-note">Copy &amp; run on host terminal</span>
+        </div>
+        <p class="text-secondary text-sm mb-3">
+            If running without root or inside an unprivileged session, execute these commands in your host terminal:
+        </p>
+        <div class="command-list">
+            <div class="command-item">
+                <div class="command-label">
+                    <span>1. Query Full SMART &amp; Attributes</span>
+                </div>
+                <div class="command-row">
+                    <code class="command-code">{{ manual_commands.full }}</code>
+                    <button type="button" class="btn-copy" onclick="copyCommand(this, '{{ manual_commands.full }}')">&#128203; Copy</button>
+                </div>
+            </div>
+
+            <div class="command-item">
+                <div class="command-label">
+                    <span>2. Quick Overall Health Check</span>
+                </div>
+                <div class="command-row">
+                    <code class="command-code">{{ manual_commands.health }}</code>
+                    <button type="button" class="btn-copy" onclick="copyCommand(this, '{{ manual_commands.health }}')">&#128203; Copy</button>
+                </div>
+            </div>
+
+            <div class="command-item">
+                <div class="command-label">
+                    <span>3. Trigger Short Self-Test (~2–5 min)</span>
+                </div>
+                <div class="command-row">
+                    <code class="command-code">{{ manual_commands.short_test }}</code>
+                    <button type="button" class="btn-copy" onclick="copyCommand(this, '{{ manual_commands.short_test }}')">&#128203; Copy</button>
+                </div>
+            </div>
+
+            <div class="command-item">
+                <div class="command-label">
+                    <span>4. Trigger Extended/Long Self-Test (~60 min)</span>
+                </div>
+                <div class="command-row">
+                    <code class="command-code">{{ manual_commands.long_test }}</code>
+                    <button type="button" class="btn-copy" onclick="copyCommand(this, '{{ manual_commands.long_test }}')">&#128203; Copy</button>
+                </div>
+            </div>
+
+            <div class="command-item">
+                <div class="command-label">
+                    <span>5. View Self-Test Execution Log</span>
+                </div>
+                <div class="command-row">
+                    <code class="command-code">{{ manual_commands.selftest_log }}</code>
+                    <button type="button" class="btn-copy" onclick="copyCommand(this, '{{ manual_commands.selftest_log }}')">&#128203; Copy</button>
+                </div>
+            </div>
+
+            <div class="command-item">
+                <div class="command-label">
+                    <span>6. Identify Hardware Controller &amp; Features</span>
+                </div>
+                <div class="command-row">
+                    <code class="command-code">{{ manual_commands.identify }}</code>
+                    <button type="button" class="btn-copy" onclick="copyCommand(this, '{{ manual_commands.identify }}')">&#128203; Copy</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual SMART Paste & Save Card -->
+    <div class="card section-card">
+        <div class="card-header flex-between">
+            <div>
+                <h3>&#128203; Paste &amp; Save SMART Output</h3>
+                <span class="header-note">Parse output into GUI metrics</span>
+            </div>
+            {% if manual_smart %}
+                <span class="badge badge-manual">&#10004; Custom SMART Loaded</span>
+            {% endif %}
+        </div>
+        <p class="text-secondary text-sm mb-2">
+            Paste the terminal text output of <code>sudo smartctl -x {{ drive.canonical_path }}</code> below to instantly parse health, wear %, power-on hours, TBW, and self-test records:
+        </p>
+        <textarea id="manual-smart-input" class="manual-smart-textarea mb-3" placeholder="Paste the output of 'sudo smartctl -x {{ drive.canonical_path }}' here...">{{ manual_smart or '' }}</textarea>
+        <div class="flex-between">
+            <button type="button" class="btn btn-primary" onclick="saveManualSmart('{{ drive.name }}')">
+                &#128190; Save &amp; Parse SMART Data
+            </button>
+            {% if manual_smart %}
+                <button type="button" class="btn btn-outline-danger btn-sm" onclick="clearManualSmart('{{ drive.name }}')">
+                    &#128465; Clear Manual SMART
+                </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
 <!-- Collapsible Raw Diagnostics -->
 <div class="card section-card">
     <div class="card-header">
@@ -274,13 +418,13 @@
     {% if 'Permission denied' in raw_smart or 'Permission denied' in raw_hdparm %}
     <div class="alert alert-warning mb-3">
         <strong>&#9888; Note on Raw Device Access:</strong>
-        Direct ATA/SCSI commands (<code>smartctl</code>, <code>hdparm</code>) require root / <code>CAP_SYS_RAWIO</code> access to block devices. When deployed in the rootful Podman container (<code>--privileged</code>), full raw hardware registers and capabilities are accessible.
+        Direct ATA/SCSI commands (<code>smartctl</code>, <code>hdparm</code>) require root / <code>CAP_SYS_RAWIO</code> access to block devices. You can either deploy in rootful Podman (<code>--privileged</code>) or run the commands manually above and paste the results.
     </div>
     {% endif %}
     
-    <details class="collapsible-section">
-        <summary>smartctl -x (Full SMART Output)</summary>
-        <pre class="code-block">{{ raw_smart or 'No output from smartctl' }}</pre>
+    <details class="collapsible-section" {% if not 'Permission denied' in raw_smart %}open{% endif %}>
+        <summary>smartctl -x (Full SMART Output) {% if manual_smart %}<span class="badge badge-info text-xs ml-2">Parsed from Manual Input</span>{% endif %}</summary>
+        <pre class="code-block">{{ manual_smart or raw_smart or 'No output from smartctl' }}</pre>
     </details>
 
     <details class="collapsible-section">

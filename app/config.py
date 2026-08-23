@@ -34,6 +34,11 @@ class Settings(BaseModel):
         default_factory=lambda: os.environ.get("SSD_INTAKE_MOCK_MODE", "0").lower() in ("1", "true", "yes")
     )
     
+    # Use sudo prefix for privileged disk commands when running as non-root
+    use_sudo: bool = Field(
+        default_factory=lambda: os.environ.get("SSD_INTAKE_USE_SUDO", "0").lower() in ("1", "true", "yes")
+    )
+    
     # Log level
     log_level: str = Field(
         default_factory=lambda: os.environ.get("SSD_INTAKE_LOG_LEVEL", "INFO")

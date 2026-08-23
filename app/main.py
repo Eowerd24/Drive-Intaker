@@ -56,6 +56,10 @@ class ClassificationRequest(BaseModel):
     notes: Optional[str] = ""
 
 
+class ManualSmartRequest(BaseModel):
+    smart_text: str
+
+
 # --- Web UI Routes ---
 
 @app.get("/", response_class=HTMLResponse)
@@ -98,6 +102,16 @@ async def drive_detail_page(request: Request, drive_name: str):
     raw_udev = run_command_sync(["udevadm", "info", "--query=property", f"--name={drive.canonical_path}"]).combined_output
     raw_lsblk = run_command_sync(["lsblk", "-O", drive.canonical_path]).combined_output
 
+    manual_smart = disk_detector.get_manual_smart(drive.canonical_path)
+    manual_commands = {
+        "full": f"sudo smartctl -x {drive.canonical_path}",
+        "health": f"sudo smartctl -H {drive.canonical_path}",
+        "short_test": f"sudo smartctl -t short {drive.canonical_path}",
+        "long_test": f"sudo smartctl -t long {drive.canonical_path}",
+        "selftest_log": f"sudo smartctl -l selftest {drive.canonical_path}",
+        "identify": f"sudo hdparm -I {drive.canonical_path}",
+    }
+
     return templates.TemplateResponse(
         request=request,
         name="drive_detail.html",
@@ -109,6 +123,8 @@ async def drive_detail_page(request: Request, drive_name: str):
             "raw_hdparm": raw_hdparm,
             "raw_udev": raw_udev,
             "raw_lsblk": raw_lsblk,
+            "manual_smart": manual_smart,
+            "manual_commands": manual_commands,
             "settings": settings,
         },
     )
@@ -236,6 +252,43 @@ async def api_lock_drive(drive_name: str):
         "message": f"Drive '{drive.canonical_path}' is now permanently locked against data destruction.",
         "drive": updated_drive.to_dict() if updated_drive else None,
     }
+
+
+@app.post("/api/drives/{drive_name}/smart/manual")
+async def api_save_manual_smart(drive_name: str, req: ManualSmartRequest):
+    drive = disk_detector.get_drive(drive_name)
+    if not drive:
+        raise HTTPException(status_code=404, detail=f"Drive '{drive_name}' not found.")
+    
+    if not req.smart_text.strip():
+        raise HTTPException(status_code=400, detail="SMART text cannot be empty.")
+    
+    report = disk_detector.save_manual_smart(drive.canonical_path, req.smart_text)
+    updated_drive = disk_detector.get_drive(drive_name)
+    
+    return {
+        "success": True,
+        "message": f"Manual SMART output parsed and saved for {drive.canonical_path}.",
+        "smart_report": report.to_dict(),
+        "drive": updated_drive.to_dict() if updated_drive else None,
+    }
+
+
+@app.delete("/api/drives/{drive_name}/smart/manual")
+async def api_delete_manual_smart(drive_name: str):
+    drive = disk_detector.get_drive(drive_name)
+    if not drive:
+        raise HTTPException(status_code=404, detail=f"Drive '{drive_name}' not found.")
+    
+    deleted = disk_detector.delete_manual_smart(drive.canonical_path)
+    updated_drive = disk_detector.get_drive(drive_name)
+    return {
+        "success": True,
+        "message": f"Manual SMART data cleared for {drive.canonical_path}.",
+        "deleted": deleted,
+        "drive": updated_drive.to_dict() if updated_drive else None,
+    }
+
 
 
 @app.post("/api/jobs")

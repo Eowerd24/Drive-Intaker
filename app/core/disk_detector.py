@@ -264,16 +264,50 @@ class DiskDetector:
                 return d
         return None
 
+    def get_manual_smart_path(self, dev_name_or_path: str) -> Path:
+        safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(dev_name_or_path))
+        manual_dir = settings.reports_dir / "manual_smart"
+        manual_dir.mkdir(parents=True, exist_ok=True)
+        return manual_dir / f"{safe_name}.txt"
+
+    def save_manual_smart(self, dev_name_or_path: str, smart_text: str) -> SmartReport:
+        path = self.get_manual_smart_path(dev_name_or_path)
+        path.write_text(smart_text.strip())
+        return SmartParser.parse(smart_text=smart_text)
+
+    def get_manual_smart(self, dev_name_or_path: str) -> Optional[str]:
+        path = self.get_manual_smart_path(dev_name_or_path)
+        if path.exists():
+            return path.read_text(errors="replace")
+        return None
+
+    def delete_manual_smart(self, dev_name_or_path: str) -> bool:
+        path = self.get_manual_smart_path(dev_name_or_path)
+        if path.exists():
+            path.unlink()
+            return True
+        return False
+
     def _inspect_smart(self, canonical_path: str) -> Optional[SmartReport]:
-        """Collects SMART data quickly via smartctl."""
+        """Collects SMART data quickly via smartctl or falls back to saved manual input."""
         res_json = self.run_sync(["smartctl", "-x", "-j", canonical_path])
-        if res_json.success or res_json.stdout.strip():
-            return SmartParser.parse(smart_text="", smart_json_str=res_json.stdout)
+        if res_json.success and res_json.stdout.strip() and "Permission denied" not in res_json.stdout:
+            rep = SmartParser.parse(smart_text="", smart_json_str=res_json.stdout)
+            if rep and rep.health_status_str != "UNKNOWN":
+                return rep
         
         # Fallback to text
         res_txt = self.run_sync(["smartctl", "-x", canonical_path])
-        if res_txt.stdout.strip():
-            return SmartParser.parse(smart_text=res_txt.stdout)
+        if res_txt.stdout.strip() and "Permission denied" not in res_txt.combined_output:
+            rep = SmartParser.parse(smart_text=res_txt.combined_output)
+            if rep and rep.health_status_str != "UNKNOWN":
+                return rep
+
+        # Fallback to manual SMART saved by user if available
+        manual_txt = self.get_manual_smart(canonical_path)
+        if manual_txt:
+            return SmartParser.parse(smart_text=manual_txt)
+
         return None
 
     def _human_size(self, bytes_val: Optional[int]) -> str:

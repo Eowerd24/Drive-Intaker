@@ -217,3 +217,92 @@ async def test_api_lock_drive(tmp_path, monkeypatch):
         assert safety_validator.is_disk_locked("/dev/sdb") is True
 
 
+def test_runner_sudo_resolution(monkeypatch):
+    """Test that privileged commands get prefixed with sudo -n when use_sudo is true and non-root."""
+    from app.config import settings
+    from app.core.runner import resolve_command_args
+    import os
+
+    # When use_sudo is False
+    monkeypatch.setattr(settings, "use_sudo", False)
+    assert resolve_command_args(["smartctl", "-x", "/dev/sdb"]) == ["smartctl", "-x", "/dev/sdb"]
+
+    # When use_sudo is True and euid != 0
+    monkeypatch.setattr(settings, "use_sudo", True)
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    assert resolve_command_args(["smartctl", "-x", "/dev/sdb"]) == ["sudo", "-n", "smartctl", "-x", "/dev/sdb"]
+    assert resolve_command_args(["wipefs", "-a", "/dev/sdb"]) == ["sudo", "-n", "wipefs", "-a", "/dev/sdb"]
+    # Non-privileged command shouldn't be prefixed
+    assert resolve_command_args(["lsblk", "-J"]) == ["lsblk", "-J"]
+    # Already sudo shouldn't be double prefixed
+    assert resolve_command_args(["sudo", "smartctl"]) == ["sudo", "smartctl"]
+
+
+@pytest.mark.asyncio
+async def test_api_manual_smart_save_and_clear(tmp_path, monkeypatch):
+    """Test POST /api/drives/{drive_name}/smart/manual and DELETE endpoint."""
+    from app.config import settings
+    from app.core.disk_detector import DriveInfo, disk_detector
+
+    monkeypatch.setattr(settings, "reports_dir", tmp_path)
+
+    dummy_drive = DriveInfo(
+        name="sdb",
+        path="/dev/sdb",
+        canonical_path="/dev/sdb",
+        model="Test Model",
+        serial="SER123",
+        size_str="500G",
+        size_bytes=500000000000,
+        transport="sata",
+        vendor="TestVendor",
+        firmware="1.0",
+        is_ssd=True,
+        smart_health="UNKNOWN",
+        power_on_hours=None,
+        temperature_celsius=None,
+        wear_remaining_percentage=None,
+        is_system_disk=False,
+        is_locked=False,
+        is_eligible=True,
+        status_badge="Ready",
+    )
+    monkeypatch.setattr(disk_detector, "get_drive", lambda name: dummy_drive)
+
+    sample_smart_output = """=== START OF READ SMART DATA SECTION ===
+SMART overall-health self-assessment test result: PASSED
+
+ID# ATTRIBUTE_NAME          FLAG     VALUE WORST THRESH TYPE      UPDATED  WHEN_FAILED RAW_VALUE
+  5 Reallocated_Sector_Ct   0x0033   100   100   010    Pre-fail  Always       -       0
+  9 Power_On_Hours          0x0032   095   095   000    Old_age   Always       -       4321
+194 Temperature_Celsius     0x0022   068   050   000    Old_age   Always       -       32
+231 SSD_Life_Left           0x0013   096   096   010    Pre-fail  Always       -       96
+"""
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        # 1. Save manual SMART
+        res = await ac.post("/api/drives/sdb/smart/manual", json={
+            "smart_text": sample_smart_output
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert data["smart_report"]["health_status_str"] == "PASSED"
+        assert data["smart_report"]["power_on_hours"] == 4321
+        assert data["smart_report"]["temperature_celsius"] == 32
+        assert data["smart_report"]["wear_remaining_percentage"] == 96
+
+        # Check that manual SMART is saved
+        saved = disk_detector.get_manual_smart("/dev/sdb")
+        assert saved is not None
+        assert "PASSED" in saved
+
+        # 2. Clear manual SMART
+        res_del = await ac.delete("/api/drives/sdb/smart/manual")
+        assert res_del.status_code == 200
+        assert res_del.json()["success"] is True
+        assert disk_detector.get_manual_smart("/dev/sdb") is None
+
+
+
+

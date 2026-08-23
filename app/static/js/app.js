@@ -330,3 +330,69 @@ async function lockDrive(driveName) {
         alert("Error locking disk: " + e.message);
     }
 }
+
+function copyCommand(btn, text) {
+    navigator.clipboard.writeText(text).then(() => {
+        const originalText = btn.innerText;
+        btn.innerText = "✓ Copied!";
+        btn.classList.add("copied");
+        setTimeout(() => {
+            btn.innerText = originalText;
+            btn.classList.remove("copied");
+        }, 2000);
+    }).catch(err => {
+        alert("Failed to copy command: " + err);
+    });
+}
+
+async function saveManualSmart(driveName) {
+    const textarea = document.getElementById('manual-smart-input');
+    if (!textarea) return;
+
+    const smartText = textarea.value.trim();
+    if (!smartText) {
+        alert("Please paste the output of 'sudo smartctl -x /dev/...' before saving.");
+        return;
+    }
+
+    try {
+        const resp = await fetch(`/api/drives/${driveName}/smart/manual`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ smart_text: smartText })
+        });
+
+        const data = await resp.json();
+        if (resp.ok) {
+            alert(`✓ SMART output parsed successfully!\nHealth Status: ${data.smart_report.health_status_str}`);
+            window.location.reload();
+        } else {
+            alert("Failed to parse SMART output: " + (data.detail || JSON.stringify(data)));
+        }
+    } catch (e) {
+        alert("Error saving SMART data: " + e.message);
+    }
+}
+
+async function clearManualSmart(driveName) {
+    if (!confirm(`Clear saved manual SMART data for ${driveName}?`)) {
+        return;
+    }
+
+    try {
+        const resp = await fetch(`/api/drives/${driveName}/smart/manual`, {
+            method: 'DELETE'
+        });
+
+        const data = await resp.json();
+        if (resp.ok) {
+            alert("✓ Manual SMART data cleared.");
+            window.location.reload();
+        } else {
+            alert("Failed to clear manual SMART: " + (data.detail || JSON.stringify(data)));
+        }
+    } catch (e) {
+        alert("Error clearing SMART data: " + e.message);
+    }
+}
+

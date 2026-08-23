@@ -6,7 +6,11 @@ set -Eeuo pipefail
 # Destructive operations are gated by multiple checks and explicit confirmation.
 
 VERSION="0.1.0"
-ROOT_DIR="/root/ssd-intake"
+if [[ $EUID -eq 0 ]]; then
+  ROOT_DIR="${SSD_INTAKE_ROOT_DIR:-/root/ssd-intake}"
+else
+  ROOT_DIR="${SSD_INTAKE_ROOT_DIR:-./reports}"
+fi
 SYSTEM_DISK=""
 DISK=""
 RUN_MODE="full"
@@ -146,7 +150,7 @@ setup_run_dir() {
   RUN_ID="$(date '+%Y%m%d-%H%M%S')-$(safe_id "$SERIAL")"
   RUN_DIR="$ROOT_DIR/$RUN_ID"
   mkdir -p "$RUN_DIR"/{before,after,tests,benchmarks,firmware}
-  chmod 700 "$RUN_DIR"
+  chmod 755 "$RUN_DIR"
   ln -sfn "$RUN_DIR" "$ROOT_DIR/latest"
 }
 
@@ -425,7 +429,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ $EUID -eq 0 ]] || die "Run as root"
+if [[ $EUID -ne 0 ]]; then
+  if ! (command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null); then
+    warn "This script requires root or passwordless sudo access for raw disk commands (smartctl, wipefs, fio)."
+    warn "Run with: sudo $0 $*"
+    die "Execution halted: root privileges required to access raw block devices."
+  fi
+fi
 [[ -n "$DISK" ]] || { usage; exit 2; }
 
 for cmd in smartctl lsblk findmnt pvs lvs sgdisk wipefs udevadm hdparm fio lsscsi fwupdmgr; do

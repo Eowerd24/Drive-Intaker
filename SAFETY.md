@@ -80,27 +80,53 @@ Enterprise SSDs (e.g. Samsung SM863/PM863/PM883, Micron 5200/5300, Intel/Solidig
 
 ---
 
-## 4. Host Access & Podman Privilege Model
+## 4. Hardware Access, Permissions & Least-Privilege Execution Model
 
-### Why Rootful Podman & Host Access is Required
+### Why Low-Level Storage Access is Required
 
-Unlike standard web applications, a storage intake station interacts directly with raw hardware storage buses:
+Unlike standard web applications, a storage intake station interacts directly with raw kernel block devices and storage controller buses:
 
 1. **SCSI/ATA/NVMe Pass-Through (`SG_IO` ioctls)**:
-   - `smartctl` requires raw SCSI/ATA command pass-through to query drive health and initiate internal self-tests.
+   - `smartctl` requires raw SCSI/ATA command pass-through (`CAP_SYS_RAWIO`) to query low-level drive health and initiate firmware-level self-tests.
 2. **Direct Block I/O (`fio`)**:
-   - Destructive full-drive write and CRC verification requires opening `/dev/sdX` with `O_DIRECT`.
+   - Destructive full-drive write and CRC verification requires opening `/dev/sdX` with `O_DIRECT` and writing to raw sectors.
 3. **Partition & Metadata Erasure**:
-   - `sgdisk`, `wipefs`, and kernel partition table rereads (`partprobe`, `blockdev --rereadpt`) require root capabilities.
+   - `sgdisk`, `wipefs`, and kernel partition table rereads (`partprobe`, `blockdev --rereadpt`) require partition management capabilities (`CAP_SYS_ADMIN`).
 4. **Host Mount & Topology Inspection**:
-   - To guarantee that mounted filesystems, active LVM PVs, and ZFS pools are not touched, the container must inspect host block status and mounts.
+   - To guarantee that mounted filesystems, active LVM PVs, and ZFS pools are not touched, the system inspects host block status and mounts (`pvs`, `lvs`, `zpool`).
+
+### Safe Execution Modes (Resolving Root/Permission Friction)
+
+To prevent file permission conflicts on the host while maintaining the Principle of Least Privilege, three safe execution architectures are supported:
+
+#### Option A: Containerized Execution with Granular Capabilities (Recommended for Production)
+- Avoid running containers with unrestricted host access. Use fine-grained Linux capabilities:
+  ```bash
+  podman run -d --name ssd-intake \
+      --cap-add=CAP_SYS_RAWIO \
+      --cap-add=CAP_SYS_ADMIN \
+      --userns=keep-id \
+      -v /dev:/dev:rslave \
+      -v /run/udev:/run/udev:ro \
+      -v /sys:/sys:ro \
+      -v ssd-intake-data:/app/reports:Z \
+      -p 127.0.0.1:7492:7492 \
+      localhost/ssd-intake:latest
+  ```
+- **`--userns=keep-id`**: Ensures files written to host mounts are owned by your host user (not `root:root`).
+- **Named Volume (`ssd-intake-data`)**: Isolates internal reports so host directories are not polluted with root-owned files.
+
+#### Option B: Bare-Metal / Host Service with Sudoers Whitelist (Least-Privilege Host Mode)
+- Run the FastAPI web server as an unprivileged service user (`ssd-intake` or your local user).
+- Install the provided drop-in rule in `/etc/sudoers.d/ssd-intake` ([deploy/ssd-intake.sudoers](file:///home/sarge/Backrooms/Dev%20drive/Active%20Development/SSD%20Health%20Check/deploy/ssd-intake.sudoers)).
+- Set `SSD_INTAKE_USE_SUDO=1` in your environment or systemd unit. The runner will automatically prepend `sudo -n` strictly for the authorized storage binaries.
 
 ### Security Controls & Best Practices
 
-To run safely in a Proxmox environment:
-- **Local Bind Only**: The web server binds to `127.0.0.1:7492` by default. It should not be exposed to untrusted public networks.
-- **Dedicated Administration Use**: Access the GUI via SSH port forwarding (`ssh -L 7492:localhost:7492 root@proxmox`) or internal management VLAN.
-- **Strict Input Validation**: Subprocesses are executed using argument arrays (`list[str]`), never `shell=True`.
+- **Local Bind Only**: The web server binds to `127.0.0.1:7492` by default.
+- **Dedicated Administration Use**: Access the GUI via SSH port forwarding (`ssh -L 7492:localhost:7492 root@proxmox`) or internal management network.
+- **Zero Shell Injection**: Subprocesses are executed using argument arrays (`list[str]`), never `shell=True`.
+- **Readable Artifact Permissions**: Run directories and reports are generated with `0755` / `0644` modes so non-root operators can inspect and manage reports.
 
 ---
 

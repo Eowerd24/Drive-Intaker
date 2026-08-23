@@ -27,6 +27,42 @@ class CommandResult:
         return self.stdout or self.stderr or ""
 
 
+PRIVILEGED_COMMAND_NAMES = {
+    "smartctl",
+    "hdparm",
+    "sgdisk",
+    "wipefs",
+    "fio",
+    "partprobe",
+    "blockdev",
+    "blkdiscard",
+    "pvs",
+    "lvs",
+    "zpool",
+    "umount",
+}
+
+
+def resolve_command_args(args: List[str]) -> List[str]:
+    """
+    If running as non-root and settings.use_sudo is enabled (or explicit via env),
+    prepends 'sudo -n' to privileged commands so unprivileged service users can run safely.
+    """
+    if not args:
+        return args
+
+    try:
+        from app.config import settings
+        use_sudo = settings.use_sudo
+    except Exception:
+        use_sudo = os.environ.get("SSD_INTAKE_USE_SUDO", "0").lower() in ("1", "true", "yes")
+
+    base_cmd = os.path.basename(args[0])
+    if use_sudo and hasattr(os, "geteuid") and os.geteuid() != 0 and base_cmd in PRIVILEGED_COMMAND_NAMES and args[0] != "sudo":
+        return ["sudo", "-n", *args]
+    return args
+
+
 def run_command_sync(
     args: List[str],
     timeout: Optional[float] = None,
@@ -37,7 +73,8 @@ def run_command_sync(
     Executes a system command synchronously using a list of arguments.
     Strictly forbids shell=True to avoid injection risks.
     """
-    cmd_str = " ".join(args)
+    exec_args = resolve_command_args(args)
+    cmd_str = " ".join(exec_args)
     logger.debug(f"Running sync command: {cmd_str}")
     start_time = time.time()
     
@@ -47,7 +84,7 @@ def run_command_sync(
 
     try:
         proc = subprocess.run(
-            args,
+            exec_args,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -57,7 +94,7 @@ def run_command_sync(
         )
         duration = round(time.time() - start_time, 3)
         res = CommandResult(
-            command=args,
+            command=exec_args,
             exit_code=proc.returncode,
             stdout=proc.stdout.strip(),
             stderr=proc.stderr.strip(),
@@ -104,7 +141,8 @@ async def run_command_async(
     Executes a system command asynchronously with real-time output streaming.
     Supports cancellation and non-blocking line streaming for live GUI feedback.
     """
-    cmd_str = " ".join(args)
+    exec_args = resolve_command_args(args)
+    cmd_str = " ".join(exec_args)
     logger.info(f"Running async command: {cmd_str}")
     start_time = time.time()
 
@@ -117,7 +155,7 @@ async def run_command_async(
 
     try:
         proc = await asyncio.create_subprocess_exec(
-            *args,
+            *exec_args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=merged_env,
@@ -129,7 +167,7 @@ async def run_command_async(
         if log_callback:
             log_callback(f"[ERROR] {err_msg}")
         return CommandResult(
-            command=args,
+            command=exec_args,
             exit_code=-1,
             stdout="",
             stderr=err_msg,
